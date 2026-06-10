@@ -317,13 +317,13 @@ export default function App() {
     e.preventDefault();
     setIsAuthenticating(true);
     setTimeout(() => {
-      if (loginPassword.trim().toLowerCase() === "admin123" || loginPassword.trim() === "") {
+      if (loginPassword.trim().toLowerCase() === "katya123") {
         setIsAdmin(true);
         setShowLoginModal(false);
         setActiveTab("cms");
         triggerToast("Login Berhasil! Selamat Datang Admin.", "success");
       } else {
-        triggerToast("Sandi Salah. Silakan gunakan 'admin123' atau kosongkan.", "error");
+        triggerToast("Sandi Salah. Silakan gunakan 'katya123' atau kosongkan.", "error");
       }
       setIsAuthenticating(false);
     }, 600);
