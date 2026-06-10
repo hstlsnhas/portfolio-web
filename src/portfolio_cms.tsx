@@ -4,30 +4,29 @@ import {
   getAuth, 
   signInWithCustomToken, 
   signInAnonymously, 
-  onAuthStateChanged, 
-  signOut 
+  onAuthStateChanged 
 } from 'firebase/auth';
 import { 
   getFirestore, 
   doc, 
   setDoc, 
-  getDoc, 
   collection, 
   onSnapshot, 
   addDoc, 
-  updateDoc, 
   deleteDoc 
 } from 'firebase/firestore';
 
 declare const __firebase_config: string;
 declare const __app_id: string;
+declare const __initial_auth_token: string;
 
-let firebaseApp, auth, db, appId;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let firebaseApp: any, auth: any, db: any, appId: string;
 let isFirebaseAvailable = false;
 
 try {
   if (typeof __firebase_config !== 'undefined') {
-    const firebaseConfig = JSON.parse(process.env.NEXT_PUBLIC_FIREBASE_CONFIG || '{}');
+    const firebaseConfig = JSON.parse(__firebase_config);
     firebaseApp = initializeApp(firebaseConfig);
     auth = getAuth(firebaseApp);
     db = getFirestore(firebaseApp);
@@ -149,7 +148,7 @@ const SVGAvatars = {
 };
 
 export default function App() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("portfolio"); 
   const [cmsTab, setCmsTab] = useState("profile"); 
   const [portfolioWorksTab, setPortfolioWorksTab] = useState("projects"); // 'projects' | 'research'
@@ -163,7 +162,7 @@ export default function App() {
   const [skills, setSkills] = useState(DEFAULT_SKILLS);
 
   const [isLive, setIsLive] = useState(false);
-  const [toast, setToast] = useState(null);
+  const [toast, setToast] = useState<{message: string, type: string} | null>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginPassword, setLoginPassword] = useState("");
   const [isAuthenticating, setIsAuthenticating] = useState(false);
@@ -181,8 +180,8 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // State untuk menampung data karya yang sedang dipilih untuk pop-up modal
-  const [selectedWork, setSelectedWork] = useState(null);
-  const [workType, setWorkType] = useState(null); // 'project' | 'research'
+  const [selectedWork, setSelectedWork] = useState<any>(null);
+  const [workType, setWorkType] = useState<string | null>(null); // 'project' | 'research'
 
   const triggerPrintCV = () => {
     window.print();
@@ -212,7 +211,7 @@ export default function App() {
   }, [research]);
 
 
-  const triggerToast = (message, type = "success") => {
+  const triggerToast = (message: string, type = "success") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
@@ -256,12 +255,12 @@ export default function App() {
   useEffect(() => {
     if (!isFirebaseAvailable || !user) return;
 
-    const unsubscribers = [];
+    const unsubscribers: Array<() => void> = [];
 
     const profileDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', 'main_profile');
     const unsubProfile = onSnapshot(profileDocRef, (docSnap) => {
       if (docSnap.exists()) {
-        setProfile(docSnap.data());
+        setProfile(docSnap.data() as typeof DEFAULT_PROFILE);
       } else {
         setDoc(profileDocRef, DEFAULT_PROFILE);
         setProfile(DEFAULT_PROFILE);
@@ -271,7 +270,7 @@ export default function App() {
 
     const eduColRef = collection(db, 'artifacts', appId, 'public', 'data', 'education');
     const unsubEdu = onSnapshot(eduColRef, (snap) => {
-      const list = [];
+      const list: any[] = [];
       snap.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
       setEducation(list.length > 0 ? list : DEFAULT_EDUCATION);
     }, (err) => console.error("Error Pendidikan Sync: ", err));
@@ -279,7 +278,7 @@ export default function App() {
 
     const expColRef = collection(db, 'artifacts', appId, 'public', 'data', 'experience');
     const unsubExp = onSnapshot(expColRef, (snap) => {
-      const list = [];
+      const list: any[] = [];
       snap.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
       setExperience(list.length > 0 ? list : DEFAULT_EXPERIENCE);
     }, (err) => console.error("Error Pengalaman Sync: ", err));
@@ -287,7 +286,7 @@ export default function App() {
 
     const projColRef = collection(db, 'artifacts', appId, 'public', 'data', 'projects');
     const unsubProj = onSnapshot(projColRef, (snap) => {
-      const list = [];
+      const list: any[] = [];
       snap.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
       setProjects(list.length > 0 ? list : DEFAULT_PROJECTS);
     }, (err) => console.error("Error Proyek Sync: ", err));
@@ -295,7 +294,7 @@ export default function App() {
 
     const resColRef = collection(db, 'artifacts', appId, 'public', 'data', 'research');
     const unsubRes = onSnapshot(resColRef, (snap) => {
-      const list = [];
+      const list: any[] = [];
       snap.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
       setResearch(list.length > 0 ? list : DEFAULT_RESEARCH);
     }, (err) => console.error("Error Riset Sync: ", err));
@@ -303,7 +302,7 @@ export default function App() {
 
     const skillsColRef = collection(db, 'artifacts', appId, 'public', 'data', 'skills');
     const unsubSkills = onSnapshot(skillsColRef, (snap) => {
-      const list = [];
+      const list: any[] = [];
       snap.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
       setSkills(list.length > 0 ? list : DEFAULT_SKILLS);
     }, (err) => console.error("Error Keahlian Sync: ", err));
@@ -314,7 +313,7 @@ export default function App() {
     };
   }, [user]);
 
-  const handleAdminLogin = (e) => {
+  const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setIsAuthenticating(true);
     setTimeout(() => {
@@ -336,7 +335,7 @@ export default function App() {
     triggerToast("Berhasil keluar dari sesi Admin.", "info");
   };
 
-  const handleSaveProfile = async (updatedProfile) => {
+  const handleSaveProfile = async (updatedProfile: any) => {
     if (isLive && db) {
       try {
         const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', 'main_profile');
@@ -351,7 +350,7 @@ export default function App() {
     }
   };
 
-  const handleAddEducation = async (e) => {
+  const handleAddEducation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEducation.school || !newEducation.degree) {
       triggerToast("Nama sekolah & Gelar wajib diisi.", "error");
@@ -372,7 +371,7 @@ export default function App() {
     setNewEducation({ school: "", degree: "", year: "", description: "" });
   };
 
-  const handleDeleteEducation = async (id) => {
+  const handleDeleteEducation = async (id: string) => {
     if (isLive && db) {
       try {
         await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'education', id));
@@ -386,7 +385,7 @@ export default function App() {
     }
   };
 
-  const handleAddExperience = async (e) => {
+  const handleAddExperience = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newExperience.company || !newExperience.role) {
       triggerToast("Perusahaan & Jabatan wajib diisi.", "error");
@@ -407,7 +406,7 @@ export default function App() {
     setNewExperience({ company: "", role: "", duration: "", description: "" });
   };
 
-  const handleDeleteExperience = async (id) => {
+  const handleDeleteExperience = async (id: string) => {
     if (isLive && db) {
       try {
         await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'experience', id));
@@ -421,7 +420,7 @@ export default function App() {
     }
   };
 
-  const handleAddProject = async (e) => {
+  const handleAddProject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProject.title || !newProject.description) {
       triggerToast("Judul Proyek dan Deskripsi wajib diisi.", "error");
@@ -442,7 +441,7 @@ export default function App() {
     setNewProject({ title: "", description: "", tech_stack: "", githubLink: "", demoLink: "", imageUrl: "" });
   };
 
-  const handleDeleteProject = async (id) => {
+  const handleDeleteProject = async (id: string) => {
     if (isLive && db) {
       try {
         await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'projects', id));
@@ -456,7 +455,7 @@ export default function App() {
     }
   };
 
-  const handleAddResearch = async (e) => {
+  const handleAddResearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newResearch.title || !newResearch.description) {
       triggerToast("Judul riset dan deskripsi wajib diisi.", "error");
@@ -477,7 +476,7 @@ export default function App() {
     setNewResearch({ title: "", description: "", imageUrl: "" });
   };
 
-  const handleDeleteResearch = async (id) => {
+  const handleDeleteResearch = async (id: string) => {
     if (isLive && db) {
       try {
         await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'research', id));
@@ -491,7 +490,7 @@ export default function App() {
     }
   };
 
-  const handleAddSkill = async (e) => {
+  const handleAddSkill = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSkill.name) {
       triggerToast("Nama keahlian tidak boleh kosong.", "error");
@@ -512,7 +511,7 @@ export default function App() {
     setNewSkill({ name: "", category: "Frontend" });
   };
 
-  const handleDeleteSkill = async (id) => {
+  const handleDeleteSkill = async (id: string) => {
     if (isLive && db) {
       try {
         await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'skills', id));
@@ -566,7 +565,7 @@ export default function App() {
             </span>
           </div>
 
-          <div className="flex items-center gap-6">
+          <div className="hidden md:flex items-center gap-6">
             <button 
               onClick={() => { setActiveTab("portfolio"); setMobileMenuOpen(false); }}
               className={`text-sm font-medium transition-colors ${activeTab === 'portfolio' ? 'text-zinc-950 underline underline-offset-8 decoration-2' : 'text-zinc-500 hover:text-zinc-900'}`}
@@ -663,8 +662,8 @@ export default function App() {
         <main className="max-w-5xl mx-auto px-6 py-12 md:py-20 space-y-24">
           
           {/* Bagian 1: Hero Intro */}
-          <section className="flex flex-row gap-8 items-center pt-4 pb-8 border-b border-zinc-100">
-            <div className="flex-1 space-y-6">
+          <section className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center pt-4 pb-8 border-b border-zinc-100">
+            <div className="md:col-span-8 space-y-6">
               <div className="space-y-3">
                 <span className="text-sm font-bold tracking-widest text-zinc-400 uppercase">Terbuka Untuk Kerja Sama</span>
                 <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-zinc-900 tracking-tight leading-tight">
@@ -719,7 +718,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex-shrink-0 flex justify-center">
+            <div className="md:col-span-4 flex justify-center">
               <div className="relative w-48 h-48 md:w-60 md:h-60 rounded-3xl overflow-hidden shadow-inner border border-zinc-150 p-2 bg-zinc-50 flex items-center justify-center">
                 {profile.photoUrl ? (
                   <img 
@@ -727,12 +726,13 @@ export default function App() {
                     alt={profile.name} 
                     className="w-full h-full object-cover rounded-2xl"
                     onError={(e) => {
-                      e.target.onerror = null; 
-                      e.target.style.display = 'none';
+                      const target = e.target as HTMLImageElement;
+                      target.onerror = null; 
+                      target.style.display = 'none';
                     }}
                   />
                 ) : (
-                  SVGAvatars[profile.avatarType || "tech"] || SVGAvatars.tech
+                  (SVGAvatars as any)[profile.avatarType || "tech"] || SVGAvatars.tech
                 )}
               </div>
             </div>
@@ -780,7 +780,7 @@ export default function App() {
             {/* TAB CONTENT: PROYEK */}
             {portfolioWorksTab === "projects" && (
               <div className="space-y-8">
-                <div className="grid grid-cols-2 gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   {paginatedProjects.map((project, index) => (
                     <div 
                       key={project.id || index}
@@ -890,7 +890,7 @@ export default function App() {
             {/* TAB CONTENT: RISET (HANYA GAMBAR & DESKRIPSI) */}
             {portfolioWorksTab === "research" && (
               <div className="space-y-8">
-                <div className="grid grid-cols-2 gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   {paginatedResearch.map((item, index) => (
                     <div 
                       key={item.id || index}
