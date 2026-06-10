@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
+import abcd from "./assets/hero.png";
 import { 
   getAuth, 
   signInWithCustomToken, 
@@ -42,7 +43,7 @@ const DEFAULT_PROFILE = {
   title: "Lead Full-Stack Developer & UI Architect",
   bio: "Saya merancang aplikasi web berkinerja tinggi dengan estetika minimalis. Berfokus pada penciptaan antarmuka digital yang cepat, aksesibel, dan disukai oleh pengguna global.",
   avatarType: "tech", 
-  photoUrl: "",
+  photoUrl: abcd,
   cvUrl: "#",
   linkedin: "https://linkedin.com",
   github: "https://github.com",
@@ -125,25 +126,26 @@ const DEFAULT_SKILLS = [
 ];
 
 const SVGAvatars = {
-  tech: (
-    <svg className="w-full h-full text-zinc-800" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="50" cy="50" r="48" fill="#F4F4F5" stroke="#E4E4E7" strokeWidth="2"/>
-      <path d="M50 30C41.7157 30 35 36.7157 35 45C35 53.2843 41.7157 60 50 60C58.2843 60 65 53.2843 65 45C65 36.7157 58.2843 30 50 30Z" fill="#18181B"/>
-      <path d="M50 64C32.3269 64 18 73.402 18 85C18 86.6569 19.3431 88 21 88H79C80.6569 88 82 86.6569 82 85C82 73.402 67.6731 64 50 64Z" fill="#27272A"/>
-    </svg>
+   tech: (
+    <img
+      src={abcd}
+      alt="tech"
+      className="w-full h-full object-cover rounded-2xl"
+    />
   ),
   design: (
-    <svg className="w-full h-full text-indigo-500" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="50" cy="50" r="48" fill="#EEF2FF" stroke="#E0E7FF" strokeWidth="2"/>
-      <rect x="35" y="35" width="30" height="30" rx="6" fill="#4F46E5" transform="rotate(45 50 50)"/>
-    </svg>
+    <img
+      src={abcd}
+      alt="design"
+      className="w-full h-full object-cover rounded-2xl"
+    />
   ),
   minimal: (
-    <svg className="w-full h-full" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="50" cy="50" r="48" fill="#FAFAFA" stroke="#F4F4F5" strokeWidth="2"/>
-      <circle cx="50" cy="45" r="18" stroke="#18181B" strokeWidth="4"/>
-      <path d="M22 80C30 70 40 66 50 66C60 66 70 70 78 80" stroke="#18181B" strokeWidth="4" strokeLinecap="round"/>
-    </svg>
+    <img
+      src={abcd}
+      alt="minimal"
+      className="w-full h-full object-cover rounded-2xl"
+    />
   )
 };
 
@@ -547,8 +549,6 @@ export default function App() {
             : "💾 Berjalan dalam Mode Sesi Demo Lokal. Perubahan bertahan selama halaman dibuka."
           }
         </span>
-        <span className="hidden sm:inline">|</span>
-        <span>Sandi Admin: <code className="bg-zinc-200 text-zinc-900 px-1 py-0.2 rounded font-semibold text-[10px]">admin123</code></span>
       </div>
 
       {/* ============================================================================
@@ -662,8 +662,8 @@ export default function App() {
         <main className="max-w-5xl mx-auto px-6 py-12 md:py-20 space-y-24">
           
           {/* Bagian 1: Hero Intro */}
-          <section className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center pt-4 pb-8 border-b border-zinc-100">
-            <div className="md:col-span-8 space-y-6">
+          <section className="flex flex-col md:grid md:grid-cols-12 md:text-left md:items-center gap-8 pt-4 pb-8 border-b border-zinc-100">
+            <div className="col-span-1 md:col-span-8 space-y-6 order-last md:order-first">
               <div className="space-y-3">
                 <span className="text-sm font-bold tracking-widest text-zinc-400 uppercase">Terbuka Untuk Kerja Sama</span>
                 <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-zinc-900 tracking-tight leading-tight">
@@ -718,24 +718,28 @@ export default function App() {
               </div>
             </div>
 
-            <div className="md:col-span-4 flex justify-center">
-              <div className="relative w-48 h-48 md:w-60 md:h-60 rounded-3xl overflow-hidden shadow-inner border border-zinc-150 p-2 bg-zinc-50 flex items-center justify-center">
-                {profile.photoUrl ? (
-                  <img 
-                    src={profile.photoUrl} 
-                    alt={profile.name} 
-                    className="w-full h-full object-cover rounded-2xl"
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      target.onerror = null; 
-                      target.style.display = 'none';
-                    }}
-                  />
-                ) : (
-                  (SVGAvatars as any)[profile.avatarType || "tech"] || SVGAvatars.tech
-                )}
-              </div>
+            <div className="md:col-span-4 order-first md:order-last flex md:justify-end">
+              <div className="relative w-32 h-32 sm:w-40 sm:h-40 md:w-60 md:h-60 
+        rounded-3xl overflow-hidden shadow-inner border border-zinc-200 
+        bg-zinc-50 flex">
+
+              {profile.photoUrl ? (
+                <img 
+                  src={profile.photoUrl} 
+                  alt={profile.name} 
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.onerror = null; 
+                    target.style.display = 'none';
+                  }}
+                />
+              ) : (
+                (SVGAvatars as any)[profile.avatarType || "tech"] || SVGAvatars.tech
+              )}
+
             </div>
+          </div>
           </section>
 
           {/* ============================================================================
