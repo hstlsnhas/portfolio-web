@@ -323,7 +323,7 @@ export default function App() {
         setActiveTab("cms");
         triggerToast("Login Berhasil! Selamat Datang Admin.", "success");
       } else {
-        triggerToast("Sandi Salah. Silakan gunakan 'katya123' atau kosongkan.", "error");
+        triggerToast("Sandi Salah. Password tidak valid.", "error");
       }
       setIsAuthenticating(false);
     }, 600);
