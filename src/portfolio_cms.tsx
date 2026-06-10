@@ -25,8 +25,8 @@ let firebaseApp: any, auth: any, db: any, appId: string;
 let isFirebaseAvailable = false;
 
 try {
-  if (typeof __firebase_config !== 'undefined') {
-    const firebaseConfig = JSON.parse(__firebase_config);
+  if (import.meta.env.VITE_FIREBASE_CONFIG) {
+    const firebaseConfig = JSON.parse(import.meta.env.VITE_FIREBASE_CONFIG || '{}');
     firebaseApp = initializeApp(firebaseConfig);
     auth = getAuth(firebaseApp);
     db = getFirestore(firebaseApp);
