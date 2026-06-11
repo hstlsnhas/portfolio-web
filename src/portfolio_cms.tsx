@@ -35,29 +35,28 @@ try {
     isFirebaseAvailable = true;
   }
 } catch (error) {
-  console.warn("Inisialisasi Firebase dilewati. Berjalan dalam Mode Demo Standalone.", error);
+  console.warn("Firebase initialization skipped. Running in standalone demo mode.", error);
 }
 
 const DEFAULT_PROFILE = {
-  name: "Alex Morgan",
-  title: "Lead Full-Stack Developer & UI Architect",
-  bio: "Saya merancang aplikasi web berkinerja tinggi dengan estetika minimalis. Berfokus pada penciptaan antarmuka digital yang cepat, aksesibel, dan disukai oleh pengguna global.",
-  avatarType: "tech", 
+  name: "Hastialisna",
+  title: "Data Analyst | Data Visualization Specialist",
+  bio: "A data enthusiast with strong analytical thinking and a passion for transforming data into meaningful insights through visualization and storytelling.", 
   photoUrl: abcd,
   cvUrl: "#",
   linkedin: "https://linkedin.com",
   github: "https://github.com",
   email: "alex.morgan@design.io",
-  location: "Jakarta, Indonesia"
+  location: "Bandung, Indonesia"
 };
 
 const DEFAULT_EDUCATION = [
   {
     id: "edu-1",
-    school: "Universitas Indonesia",
-    degree: "S1 Teknik Informatika",
+    school: "Indonesia University of Education",
+    degree: "Bachelor of Mathematics",
     year: "2018 - 2022",
-    description: "Fokus pada Rekayasa Perangkat Lunak dan Interaksi Manusia-Komputer. Lulus dengan predikat cumlaude."
+    description: "Concentration in Statistics, with a strong focus on data analysis, statistical modeling, and high-dimensional data techniques. Conducted a thesis on binary logistic regression for high-dimensional datasets. Graduated with cum laude honors."
   }
 ];
 
@@ -125,30 +124,6 @@ const DEFAULT_SKILLS = [
   { id: "sk-8", name: "Figma UI/UX", category: "Tools" }
 ];
 
-const SVGAvatars = {
-   tech: (
-    <img
-      src={abcd}
-      alt="tech"
-      className="w-full h-full object-cover rounded-2xl"
-    />
-  ),
-  design: (
-    <img
-      src={abcd}
-      alt="design"
-      className="w-full h-full object-cover rounded-2xl"
-    />
-  ),
-  minimal: (
-    <img
-      src={abcd}
-      alt="minimal"
-      className="w-full h-full object-cover rounded-2xl"
-    />
-  )
-};
-
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("portfolio"); 
@@ -173,7 +148,7 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 4;
 
-  const [newSkill, setNewSkill] = useState({ name: "", category: "Frontend" });
+  const [newSkill, setNewSkill] = useState({ name: "", category: "Data Analyst" });
   const [newProject, setNewProject] = useState({ title: "", description: "", tech_stack: "", githubLink: "", demoLink: "", imageUrl: "" });
   const [newResearch, setNewResearch] = useState({ title: "", description: "", imageUrl: "" });
   const [newExperience, setNewExperience] = useState({ company: "", role: "", duration: "", description: "" });
@@ -220,7 +195,7 @@ export default function App() {
 
   useEffect(() => {
     if (!isFirebaseAvailable) {
-      console.log("Firebase tidak terdeteksi. Berjalan dalam local mode.");
+      console.log("Firebase not detected. Running in local mode.");
       return;
     }
 
@@ -232,7 +207,7 @@ export default function App() {
           await signInAnonymously(auth);
         }
       } catch (authError) {
-        console.error("Gagal melakukan otentikasi: ", authError);
+        console.error("Failed to authenticate: ", authError);
       }
     };
 
@@ -242,7 +217,7 @@ export default function App() {
       if (firebaseUser) {
         setUser(firebaseUser);
         setIsLive(true);
-        triggerToast("Terhubung dengan Cloud Database Sync", "success");
+        triggerToast("Connected to Cloud Database Sync", "success");
       } else {
         setUser(null);
         setIsLive(false);
@@ -323,9 +298,9 @@ export default function App() {
         setIsAdmin(true);
         setShowLoginModal(false);
         setActiveTab("cms");
-        triggerToast("Login Berhasil! Selamat Datang Admin.", "success");
+        triggerToast("Login Successful! Welcome Admin.", "success");
       } else {
-        triggerToast("Sandi Salah. Password tidak valid.", "error");
+        triggerToast("Incorrect Password. Please try again.", "error");
       }
       setIsAuthenticating(false);
     }, 600);
@@ -334,7 +309,7 @@ export default function App() {
   const handleAdminLogout = () => {
     setIsAdmin(false);
     setActiveTab("portfolio");
-    triggerToast("Berhasil keluar dari sesi Admin.", "info");
+    triggerToast("Successfully logged out of Admin session.", "info");
   };
 
   const handleSaveProfile = async (updatedProfile: any) => {
@@ -342,33 +317,33 @@ export default function App() {
       try {
         const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', 'main_profile');
         await setDoc(docRef, updatedProfile);
-        triggerToast("Profil awan berhasil diperbarui!", "success");
+        triggerToast("Profile updated successfully!", "success");
       } catch (err) {
-        triggerToast("Gagal menyimpan profil di database cloud.", "error");
+        triggerToast("Failed to save profile to cloud database.", "error");
       }
     } else {
       setProfile(updatedProfile);
-      triggerToast("Profil lokal diperbarui secara dinamis!", "success");
+      triggerToast("Local profile updated successfully!", "success");
     }
   };
 
   const handleAddEducation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEducation.school || !newEducation.degree) {
-      triggerToast("Nama sekolah & Gelar wajib diisi.", "error");
+      triggerToast("School name & Degree are required.", "error");
       return;
     }
     const item = { ...newEducation, id: "edu-" + Date.now() };
     if (isLive && db) {
       try {
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'education'), newEducation);
-        triggerToast("Data Pendidikan berhasil diunggah!", "success");
+        triggerToast("Education data uploaded successfully!", "success");
       } catch (e) {
-        triggerToast("Gagal menyimpan di cloud.", "error");
+        triggerToast("Failed to save to cloud.", "error");
       }
     } else {
       setEducation([...education, item]);
-      triggerToast("Pendidikan lokal berhasil ditambah!", "success");
+      triggerToast("Local education data added successfully!", "success");
     }
     setNewEducation({ school: "", degree: "", year: "", description: "" });
   };
@@ -377,33 +352,33 @@ export default function App() {
     if (isLive && db) {
       try {
         await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'education', id));
-        triggerToast("Pendidikan terhapus dari cloud!", "success");
+        triggerToast("Education data removed from cloud!", "success");
       } catch (e) {
-        triggerToast("Gagal menghapus.", "error");
+        triggerToast("Failed to delete education data.", "error");
       }
     } else {
       setEducation(education.filter(x => x.id !== id));
-      triggerToast("Data pendidikan lokal dihapus!", "info");
+      triggerToast("Local education data deleted!", "info");
     }
   };
 
   const handleAddExperience = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newExperience.company || !newExperience.role) {
-      triggerToast("Perusahaan & Jabatan wajib diisi.", "error");
+      triggerToast("Company & Role are required.", "error");
       return;
     }
     const item = { ...newExperience, id: "exp-" + Date.now() };
     if (isLive && db) {
       try {
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'experience'), newExperience);
-        triggerToast("Pengalaman kerja berhasil ditambah ke cloud!", "success");
+        triggerToast("Work experience successfully added to cloud!", "success");
       } catch (e) {
-        triggerToast("Gagal mengunggah.", "error");
+        triggerToast("Failed to upload work experience.", "error");
       }
     } else {
       setExperience([...experience, item]);
-      triggerToast("Pengalaman kerja ditambahkan!", "success");
+      triggerToast("Work experience added locally!", "success");
     }
     setNewExperience({ company: "", role: "", duration: "", description: "" });
   };
@@ -412,33 +387,33 @@ export default function App() {
     if (isLive && db) {
       try {
         await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'experience', id));
-        triggerToast("Pengalaman berhasil dihapus!", "success");
+        triggerToast("Work experience successfully deleted!", "success");
       } catch (e) {
-        triggerToast("Gagal menghapus.", "error");
+        triggerToast("Failed to delete work experience.", "error");
       }
     } else {
       setExperience(experience.filter(x => x.id !== id));
-      triggerToast("Pengalaman lokal terhapus!", "info");
+      triggerToast("Local work experience deleted!", "info");
     }
   };
 
   const handleAddProject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProject.title || !newProject.description) {
-      triggerToast("Judul Proyek dan Deskripsi wajib diisi.", "error");
+      triggerToast("Project title and description are required.", "error");
       return;
     }
     const item = { ...newProject, id: "proj-" + Date.now() };
     if (isLive && db) {
       try {
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'projects'), newProject);
-        triggerToast("Proyek baru berhasil disimpan di cloud!", "success");
+        triggerToast("Project added to cloud successfully!", "success");
       } catch (e) {
-        triggerToast("Gagal mengunggah proyek.", "error");
+        triggerToast("Failed to upload project.", "error");
       }
     } else {
       setProjects([...projects, item]);
-      triggerToast("Proyek ditambahkan secara lokal!", "success");
+      triggerToast("Project added locally!", "success");
     }
     setNewProject({ title: "", description: "", tech_stack: "", githubLink: "", demoLink: "", imageUrl: "" });
   };
@@ -447,33 +422,33 @@ export default function App() {
     if (isLive && db) {
       try {
         await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'projects', id));
-        triggerToast("Proyek terhapus dari cloud!", "success");
+        triggerToast("Project removed from cloud!", "success");
       } catch (e) {
-        triggerToast("Gagal menghapus proyek.", "error");
+        triggerToast("Failed to delete project.", "error");
       }
     } else {
       setProjects(projects.filter(x => x.id !== id));
-      triggerToast("Proyek terhapus secara lokal!", "info");
+      triggerToast("Project deleted locally!", "info");
     }
   };
 
   const handleAddResearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newResearch.title || !newResearch.description) {
-      triggerToast("Judul riset dan deskripsi wajib diisi.", "error");
+      triggerToast("Research title and description are required.", "error");
       return;
     }
     const item = { ...newResearch, id: "res-" + Date.now() };
     if (isLive && db) {
       try {
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'research'), newResearch);
-        triggerToast("Riset baru berhasil diunggah ke cloud!", "success");
+        triggerToast("New research successfully uploaded to cloud!", "success");
       } catch (e) {
-        triggerToast("Gagal mengunggah riset.", "error");
+        triggerToast("Failed to upload research.", "error");
       }
     } else {
       setResearch([...research, item]);
-      triggerToast("Riset baru berhasil ditambahkan lokal!", "success");
+      triggerToast("New research added locally!", "success");
     }
     setNewResearch({ title: "", description: "", imageUrl: "" });
   };
@@ -482,33 +457,33 @@ export default function App() {
     if (isLive && db) {
       try {
         await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'research', id));
-        triggerToast("Riset terhapus dari cloud!", "success");
+        triggerToast("Research successfully deleted!", "success");
       } catch (e) {
-        triggerToast("Gagal menghapus data riset.", "error");
+        triggerToast("Failed to delete research.", "error");
       }
     } else {
       setResearch(research.filter(x => x.id !== id));
-      triggerToast("Data riset terhapus lokal!", "info");
+      triggerToast("Local research deleted!", "info");
     }
   };
 
   const handleAddSkill = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSkill.name) {
-      triggerToast("Nama keahlian tidak boleh kosong.", "error");
+      triggerToast("Skill name is required.", "error");
       return;
     }
     const item = { ...newSkill, id: "sk-" + Date.now() };
     if (isLive && db) {
       try {
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'skills'), newSkill);
-        triggerToast("Keahlian ditambahkan ke database!", "success");
+        triggerToast("Skill added to cloud successfully!", "success");
       } catch (e) {
-        triggerToast("Gagal mengunggah keahlian.", "error");
+        triggerToast("Failed to upload skill.", "error");
       }
     } else {
       setSkills([...skills, item]);
-      triggerToast("Keahlian lokal ditambahkan!", "success");
+      triggerToast("Skill added locally!", "success");
     }
     setNewSkill({ name: "", category: "Frontend" });
   };
@@ -517,13 +492,13 @@ export default function App() {
     if (isLive && db) {
       try {
         await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'skills', id));
-        triggerToast("Tag keahlian dihapus dari cloud!", "success");
+        triggerToast("Skill removed from cloud!", "success");
       } catch (e) {
-        triggerToast("Gagal menghapus keahlian.", "error");
+        triggerToast("Failed to delete skill.", "error");
       }
     } else {
       setSkills(skills.filter(x => x.id !== id));
-      triggerToast("Tag keahlian lokal dihapus!", "info");
+      triggerToast("Skill deleted locally!", "info");
     }
   };
 
@@ -545,8 +520,8 @@ export default function App() {
         <span className="inline-flex items-center rounded-md bg-zinc-200 px-1.5 py-0.5 text-zinc-800 font-medium">Status Database</span>
         <span>
           {isLive 
-            ? `⚡ Terkoneksi secara Live Cloud (${appId.slice(0, 8)}...)` 
-            : "💾 Berjalan dalam Mode Sesi Demo Lokal. Perubahan bertahan selama halaman dibuka."
+            ? `⚡ Connect to Live Cloud (${appId.slice(0, 9)}...)` 
+            : "💾 Running in Local Demo Mode. Changes persist while the page is open."
           }
         </span>
       </div>
@@ -570,7 +545,7 @@ export default function App() {
               onClick={() => { setActiveTab("portfolio"); setMobileMenuOpen(false); }}
               className={`text-sm font-medium transition-colors ${activeTab === 'portfolio' ? 'text-zinc-950 underline underline-offset-8 decoration-2' : 'text-zinc-500 hover:text-zinc-900'}`}
             >
-              Halaman Portofolio
+              Portfolio Page
             </button>
             <button 
               onClick={() => {
@@ -589,12 +564,12 @@ export default function App() {
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
               </svg>
-              {isAdmin ? "Dasbor CMS" : "Login Admin Panel"}
+              {isAdmin ? "CMS Dashboard" : "Admin Login"}
             </button>
             {isAdmin && (
               <button 
                 onClick={handleAdminLogout} 
-                title="Keluar Admin" 
+                title="Logout Admin" 
                 className="p-1.5 rounded-lg border border-zinc-200 text-zinc-500 hover:text-red-600 hover:bg-zinc-50 transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -625,7 +600,7 @@ export default function App() {
               onClick={() => { setActiveTab("portfolio"); setMobileMenuOpen(false); }}
               className={`w-full text-left py-2 px-3 rounded-lg text-sm font-medium ${activeTab === 'portfolio' ? 'bg-zinc-100 text-zinc-950 font-semibold' : 'text-zinc-500'}`}
             >
-              Halaman Portofolio Utama
+              Portfolio Page
             </button>
             <button 
               onClick={() => {
@@ -641,14 +616,14 @@ export default function App() {
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
               </svg>
-              {isAdmin ? "Dasbor CMS" : "Login Admin Panel"}
+              {isAdmin ? "CMS Dashboard" : "Admin Login"}
             </button>
             {isAdmin && (
               <button 
                 onClick={() => { handleAdminLogout(); setMobileMenuOpen(false); }}
                 className="w-full text-left py-2 px-3 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50"
               >
-                Sign Out Admin
+                Logout Admin
               </button>
             )}
           </div>
@@ -665,16 +640,16 @@ export default function App() {
           <section className="flex flex-col md:grid md:grid-cols-12 md:text-left md:items-center gap-8 pt-4 pb-8 border-b border-zinc-100">
             <div className="col-span-1 md:col-span-8 space-y-6 order-last md:order-first">
               <div className="space-y-3">
-                <span className="text-sm font-bold tracking-widest text-zinc-400 uppercase">Terbuka Untuk Kerja Sama</span>
+                <span className="text-sm font-bold tracking-widest text-zinc-400 uppercase">Open for Collaboration</span>
                 <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-zinc-900 tracking-tight leading-tight">
-                  Halo, Saya {profile.name || "Alex Morgan"}
+                  Hi, I'm {profile.name || "Alex Morgan"}
                 </h1>
                 <p className="text-xl md:text-2xl font-medium text-zinc-600">
                   {profile.title || "Full-Stack Engineer"}
                 </p>
               </div>
               <p className="text-base md:text-lg text-zinc-500 leading-relaxed max-w-2xl">
-                {profile.bio || "Merancang produk web responsif dengan performa tinggi dan kegunaan maksimal."}
+                {profile.bio || "Designing responsive web products with high performance and maximum usability."}
               </p>
               
               <div className="flex flex-wrap gap-3 pt-2">
@@ -685,7 +660,7 @@ export default function App() {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                  Cetak / Simpan CV
+                  Print / Save CV
                 </button>
                 {profile.linkedin && (
                   <a 
@@ -712,7 +687,7 @@ export default function App() {
                     href={`mailto:${profile.email}`}
                     className="border border-zinc-200 hover:bg-zinc-50 text-zinc-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-all flex items-center gap-2"
                   >
-                    Kirim Email
+                    Send Email
                   </a>
                 )}
               </div>
@@ -735,7 +710,11 @@ export default function App() {
                   }}
                 />
               ) : (
-                (SVGAvatars as any)[profile.avatarType || "tech"] || SVGAvatars.tech
+                <img 
+                  src={abcd} 
+                  alt={profile.name} 
+                  className="w-full h-full object-cover"
+                />
               )}
 
             </div>
@@ -766,7 +745,7 @@ export default function App() {
                       : "text-zinc-500 hover:text-zinc-900"
                   }`}
                 >
-                  💻 Proyek Aplikasi
+                  💻 Application Project
                 </button>
                 <button
                   onClick={() => setPortfolioWorksTab("research")}
@@ -776,7 +755,7 @@ export default function App() {
                       : "text-zinc-500 hover:text-zinc-900"
                   }`}
                 >
-                  🔬 Riset Ilmiah
+                  🔬 Scientific Research
                 </button>
               </div>
             </div>
@@ -856,7 +835,7 @@ export default function App() {
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                                 </svg>
-                                Demo Aplikasi
+                                Demo
                               </a>
                             )}
                           </div>
@@ -874,17 +853,17 @@ export default function App() {
                       disabled={currentPage === 1}
                       className="px-4 py-2 text-xs font-bold bg-zinc-100 hover:bg-zinc-200 text-zinc-800 disabled:opacity-40 rounded-lg transition-all"
                     >
-                      Sebelumnya
+                      Previous
                     </button>
                     <span className="text-xs font-semibold text-zinc-500">
-                      Halaman {currentPage} dari {totalProjectPages}
+                      Page {currentPage} of {totalProjectPages}
                     </span>
                     <button
                       onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalProjectPages))}
                       disabled={currentPage === totalProjectPages}
                       className="px-4 py-2 text-xs font-bold bg-zinc-900 hover:bg-zinc-800 text-white disabled:opacity-40 rounded-lg transition-all"
                     >
-                      Selanjutnya
+                      Next
                     </button>
                   </div>
                 )}
@@ -928,7 +907,7 @@ export default function App() {
                         {/* Info Tambahan sebagai pengganti Tombol Tautan */}
                         <div className="mt-6 pt-4 border-t border-zinc-100 flex items-center justify-between text-xs text-zinc-400">
                           <span className="flex items-center gap-1">
-                            📂 Publikasi Terbuka
+                            📂 Open Publication
                           </span>
                           <span>Peer-Reviewed</span>
                         </div>
@@ -945,17 +924,17 @@ export default function App() {
                       disabled={currentPage === 1}
                       className="px-4 py-2 text-xs font-bold bg-zinc-100 hover:bg-zinc-200 text-zinc-800 disabled:opacity-40 rounded-lg transition-all"
                     >
-                      Sebelumnya
+                      Previous
                     </button>
                     <span className="text-xs font-semibold text-zinc-500">
-                      Halaman {currentPage} dari {totalResearchPages}
+                      Page {currentPage} of {totalResearchPages}
                     </span>
                     <button
                       onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalResearchPages))}
                       disabled={currentPage === totalResearchPages}
                       className="px-4 py-2 text-xs font-bold bg-zinc-900 hover:bg-zinc-800 text-white disabled:opacity-40 rounded-lg transition-all"
                     >
-                      Selanjutnya
+                      Next
                     </button>
                   </div>
                 )}
@@ -971,7 +950,7 @@ export default function App() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
               </div>
-              <h2 className="text-2xl font-extrabold text-zinc-900 tracking-tight">Pengalaman Kerja</h2>
+              <h2 className="text-2xl font-extrabold text-zinc-900 tracking-tight">Work Experience</h2>
             </div>
 
             <div className="relative border-l-2 border-zinc-150 pl-6 space-y-12 ml-4">
@@ -984,7 +963,7 @@ export default function App() {
                       {item.duration}
                     </span>
                     <h3 className="text-lg font-bold text-zinc-900">
-                      {item.role} <span className="text-zinc-400 font-normal">di</span> {item.company}
+                      {item.role} <span className="text-zinc-400 font-normal">at</span> {item.company}
                     </h3>
                     <p className="text-zinc-500 leading-relaxed max-w-3xl pt-2 text-sm md:text-base">
                       {item.description}
@@ -1003,11 +982,11 @@ export default function App() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               </div>
-              <h2 className="text-2xl font-extrabold text-zinc-900 tracking-tight">Keahlian & Teknologi</h2>
+              <h2 className="text-2xl font-extrabold text-zinc-900 tracking-tight">Skills & Technologies</h2>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {['Frontend', 'Backend', 'Tools'].map((category) => {
+              {['Data Analyst', 'Data Visualization', 'Tools'].map((category) => {
                 const filtered = skills.filter(s => s.category?.toLowerCase() === category.toLowerCase());
                 return (
                   <div key={category} className="border border-zinc-150 rounded-xl p-6 bg-zinc-50/50">
@@ -1024,7 +1003,7 @@ export default function App() {
                           </span>
                         ))
                       ) : (
-                        <span className="text-zinc-400 text-xs italic">Belum ada keahlian</span>
+                        <span className="text-zinc-400 text-xs italic">No skills available</span>
                       )}
                     </div>
                   </div>
@@ -1041,7 +1020,7 @@ export default function App() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-4 6v-7.5l4-2.222" />
                 </svg>
               </div>
-              <h2 className="text-2xl font-extrabold text-zinc-900 tracking-tight">Pendidikan</h2>
+              <h2 className="text-2xl font-extrabold text-zinc-900 tracking-tight">Education</h2>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1071,10 +1050,10 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                <h1 className="text-3xl font-extrabold text-zinc-900 tracking-tight">Dasbor Admin CMS</h1>
+                <h1 className="text-3xl font-extrabold text-zinc-900 tracking-tight">CMS Dashboard</h1>
               </div>
               <p className="text-zinc-500 text-sm mt-1">
-                Ubah, tambah, dan kontrol konten portofolio Anda secara real-time.
+                Change, add, and control your portfolio content in real-time.
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -1086,13 +1065,13 @@ export default function App() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                 </svg>
-                Lihat Portofolio
+                View Portfolio
               </button>
               <button 
                 onClick={handleAdminLogout} 
                 className="bg-red-50 text-red-600 hover:bg-red-100 text-sm font-semibold px-4 py-2.5 rounded-lg border border-red-200 transition-colors"
               >
-                Keluar
+                Sign Out
               </button>
             </div>
           </div>
@@ -1102,11 +1081,11 @@ export default function App() {
             {/* Sidebar CMS */}
             <aside className="lg:col-span-3 flex flex-row lg:flex-col overflow-x-auto lg:overflow-visible gap-1.5 p-1 bg-zinc-50 border border-zinc-200 rounded-xl">
               {[
-                { id: "profile", label: "Identitas Profil", icon: "👤" },
-                { id: "works", label: "Karya (Proyek & Riset)", icon: "💼" },
-                { id: "experience", label: "Pengalaman Kerja", icon: "🏢" },
-                { id: "skills", label: "Keahlian", icon: "⚡" },
-                { id: "education", label: "Pendidikan", icon: "🎓" }
+                { id: "profile", label: "Profile Information", icon: "👤" },
+                { id: "works", label: "Works (Projects & Research)", icon: "💼" },
+                { id: "experience", label: "Work Experience", icon: "🏢" },
+                { id: "skills", label: "Skills", icon: "⚡" },
+                { id: "education", label: "Education", icon: "🎓" }
               ].map(tab => (
                 <button
                   key={tab.id}
@@ -1130,8 +1109,8 @@ export default function App() {
               {cmsTab === "profile" && (
                 <div className="space-y-6">
                   <div>
-                    <h2 className="text-lg font-bold text-zinc-900">Kelola Informasi Profil</h2>
-                    <p className="text-xs text-zinc-400">Atur deskripsi utama diri Anda untuk publik.</p>
+                    <h2 className="text-lg font-bold text-zinc-900">Manage Profile Information</h2>
+                    <p className="text-xs text-zinc-400">Adjust your main description for public view.</p>
                   </div>
 
                   <form 
@@ -1143,7 +1122,7 @@ export default function App() {
                   >
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-1">
-                        <label className="text-xs font-bold text-zinc-500 uppercase">Nama Lengkap</label>
+                        <label className="text-xs font-bold text-zinc-500 uppercase">Full Name</label>
                         <input 
                           type="text" 
                           value={profile.name} 
@@ -1152,8 +1131,8 @@ export default function App() {
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-xs font-bold text-zinc-500 uppercase">Jabatan Profesional</label>
-                        <input 
+                        <label className="text-xs font-bold text-zinc-500 uppercase">Professional Title</label>
+                        <input  
                           type="text" 
                           value={profile.title} 
                           onChange={(e) => setProfile({...profile, title: e.target.value})}
@@ -1163,7 +1142,7 @@ export default function App() {
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-zinc-500 uppercase">Biografi Singkat</label>
+                      <label className="text-xs font-bold text-zinc-500 uppercase">Short Biography</label>
                       <textarea 
                         value={profile.bio} 
                         onChange={(e) => setProfile({...profile, bio: e.target.value})}
@@ -1174,7 +1153,7 @@ export default function App() {
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="space-y-1">
-                        <label className="text-xs font-bold text-zinc-500 uppercase">Lokasi</label>
+                        <label className="text-xs font-bold text-zinc-500 uppercase">Location</label>
                         <input 
                           type="text" 
                           value={profile.location || ""} 
@@ -1183,7 +1162,7 @@ export default function App() {
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-xs font-bold text-zinc-500 uppercase">Tautan LinkedIn</label>
+                        <label className="text-xs font-bold text-zinc-500 uppercase">LinkedIn Profile</label>
                         <input 
                           type="url" 
                           value={profile.linkedin} 
@@ -1192,7 +1171,7 @@ export default function App() {
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-xs font-bold text-zinc-500 uppercase">Tautan GitHub</label>
+                        <label className="text-xs font-bold text-zinc-500 uppercase">GitHub Profile</label>
                         <input 
                           type="url" 
                           value={profile.github} 
@@ -1204,7 +1183,7 @@ export default function App() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-1">
-                        <label className="text-xs font-bold text-zinc-500 uppercase">Alamat Email</label>
+                        <label className="text-xs font-bold text-zinc-500 uppercase">Email Address</label>
                         <input 
                           type="email" 
                           value={profile.email} 
@@ -1212,25 +1191,13 @@ export default function App() {
                           className="w-full bg-zinc-50 border border-zinc-200 focus:border-zinc-900 focus:bg-white rounded-lg px-3 py-2 text-sm focus:outline-none"
                         />
                       </div>
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-zinc-500 uppercase">Pilihan Avatar Default</label>
-                        <select 
-                          value={profile.avatarType} 
-                          onChange={(e) => setProfile({...profile, avatarType: e.target.value})}
-                          className="w-full bg-zinc-50 border border-zinc-200 focus:border-zinc-900 focus:bg-white rounded-lg px-3.5 py-2 text-sm focus:outline-none"
-                        >
-                          <option value="tech">Developer Gray Scale Vector</option>
-                          <option value="design">Design Abstract Violet</option>
-                          <option value="minimal">Minimal Line Silhouette</option>
-                        </select>
-                      </div>
                     </div>
 
                     <button 
                       type="submit"
                       className="bg-zinc-900 hover:bg-zinc-800 text-white font-semibold text-sm px-5 py-2.5 rounded-lg transition-all shadow-md flex items-center gap-2"
                     >
-                      Simpan Perubahan Profil
+                      Save Profile Changes
                     </button>
                   </form>
                 </div>
@@ -1241,8 +1208,8 @@ export default function App() {
                 <div className="space-y-8">
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
-                      <h2 className="text-lg font-bold text-zinc-900">Kelola Hasil Karya</h2>
-                      <p className="text-xs text-zinc-400">Pilih tab di bawah untuk mengelola Proyek atau Riset secara terpisah.</p>
+                      <h2 className="text-lg font-bold text-zinc-900">Manage Work Results</h2>
+                      <p className="text-xs text-zinc-400">Select the tab below to manage Projects or Research separately.</p>
                     </div>
 
                     {/* Sub-tab manajemen di CMS */}
@@ -1271,21 +1238,21 @@ export default function App() {
                     <div className="space-y-6">
                       {/* Form Tambah Proyek */}
                       <form onSubmit={handleAddProject} className="p-4 border border-zinc-150 rounded-xl bg-zinc-50 space-y-4">
-                        <h3 className="text-xs font-bold text-zinc-600 uppercase tracking-wider">➕ Tambah Proyek Baru</h3>
+                        <h3 className="text-xs font-bold text-zinc-600 uppercase tracking-wider">➕ Add New Project</h3>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-1">
-                            <label className="text-xs font-bold text-zinc-500">Judul Proyek</label>
+                            <label className="text-xs font-bold text-zinc-500">Project Title</label>
                             <input 
                               type="text" 
                               value={newProject.title} 
                               onChange={(e) => setNewProject({...newProject, title: e.target.value})}
-                              placeholder="Contoh: Zenith Task Manager" 
+                              placeholder="Example: Zenith Task Manager" 
                               className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
                             />
                           </div>
                           <div className="space-y-1">
-                            <label className="text-xs font-bold text-zinc-500">Tautan Gambar (URL Gambar)</label>
+                            <label className="text-xs font-bold text-zinc-500">Image Link (Image URL)</label>
                             <input 
                               type="text" 
                               value={newProject.imageUrl} 
@@ -1298,7 +1265,7 @@ export default function App() {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-1">
-                            <label className="text-xs font-bold text-zinc-500">Tautan GitHub (Repository)</label>
+                            <label className="text-xs font-bold text-zinc-500">GitHub Link (Repository)</label>
                             <input 
                               type="url" 
                               value={newProject.githubLink} 
@@ -1308,7 +1275,7 @@ export default function App() {
                             />
                           </div>
                           <div className="space-y-1">
-                            <label className="text-xs font-bold text-zinc-500">Tautan Live Demo</label>
+                            <label className="text-xs font-bold text-zinc-500">Live Demo Link</label>
                             <input 
                               type="url" 
                               value={newProject.demoLink} 
@@ -1320,7 +1287,7 @@ export default function App() {
                         </div>
 
                         <div className="space-y-1">
-                          <label className="text-xs font-bold text-zinc-500">Kumpulan Teknologi (pisahkan dengan koma)</label>
+                          <label className="text-xs font-bold text-zinc-500">Technology Stack (comma-separated)</label>
                           <input 
                             type="text" 
                             value={newProject.tech_stack} 
@@ -1331,11 +1298,11 @@ export default function App() {
                         </div>
 
                         <div className="space-y-1">
-                          <label className="text-xs font-bold text-zinc-500">Deskripsi Ringkas</label>
+                          <label className="text-xs font-bold text-zinc-500">Short Description</label>
                           <textarea 
                             value={newProject.description} 
                             onChange={(e) => setNewProject({...newProject, description: e.target.value})}
-                            placeholder="Tuliskan penjelasan mengenai cara kerja dan keunggulan proyek..." 
+                            placeholder="Write a brief explanation about the project's functionality and advantages..." 
                             rows={2}
                             className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
                           />
@@ -1345,13 +1312,13 @@ export default function App() {
                           type="submit" 
                           className="bg-zinc-950 text-white text-xs font-bold tracking-wider uppercase px-4 py-2.5 rounded-lg hover:bg-zinc-800 transition-colors"
                         >
-                          Publikasikan Proyek
+                          Publish Project
                         </button>
                       </form>
 
                       {/* List Proyek yang Aktif */}
                       <div className="space-y-3">
-                        <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Daftar Proyek Aktif</h3>
+                        <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Active Projects</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {projects.map(proj => (
                             <div key={proj.id} className="p-4 border border-zinc-150 rounded-xl bg-white flex flex-col justify-between">
@@ -1387,21 +1354,21 @@ export default function App() {
                     <div className="space-y-6">
                       {/* Form Tambah Riset */}
                       <form onSubmit={handleAddResearch} className="p-4 border border-zinc-150 rounded-xl bg-zinc-50 space-y-4">
-                        <h3 className="text-xs font-bold text-zinc-600 uppercase tracking-wider">➕ Tambah Hasil Riset Baru</h3>
+                        <h3 className="text-xs font-bold text-zinc-600 uppercase tracking-wider">➕ Add New Research Result</h3>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-1">
-                            <label className="text-xs font-bold text-zinc-500">Judul Riset / Jurnal</label>
+                            <label className="text-xs font-bold text-zinc-500">Research Title / Journal</label>
                             <input 
                               type="text" 
                               value={newResearch.title} 
                               onChange={(e) => setNewResearch({...newResearch, title: e.target.value})}
-                              placeholder="Contoh: Analisis Kinerja CPU Pada Rendering UI" 
+                              placeholder="Example: Analysis of CPU Performance in UI Rendering" 
                               className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
                             />
                           </div>
                           <div className="space-y-1">
-                            <label className="text-xs font-bold text-zinc-500">Tautan Gambar Riset (Ilustrasi Teknis)</label>
+                            <label className="text-xs font-bold text-zinc-500">Research Image Link (Technical Illustration)</label>
                             <input 
                               type="text" 
                               value={newResearch.imageUrl} 
@@ -1413,11 +1380,11 @@ export default function App() {
                         </div>
 
                         <div className="space-y-1">
-                          <label className="text-xs font-bold text-zinc-500">Abstrak / Deskripsi Hasil Riset</label>
+                          <label className="text-xs font-bold text-zinc-500">Abstract / Research Description</label>
                           <textarea 
                             value={newResearch.description} 
                             onChange={(e) => setNewResearch({...newResearch, description: e.target.value})}
-                            placeholder="Uraikan temuan riset, metodologi kompresi data, serta kesimpulan praktis yang didapat..." 
+                            placeholder="Explain the research findings, data compression methodology, and practical conclusions..." 
                             rows={3}
                             className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
                           />
@@ -1427,13 +1394,13 @@ export default function App() {
                           type="submit" 
                           className="bg-zinc-950 text-white text-xs font-bold tracking-wider uppercase px-4 py-2.5 rounded-lg hover:bg-zinc-800 transition-colors"
                         >
-                          Publikasikan Riset
+                          Publish Research
                         </button>
                       </form>
 
                       {/* List Riset yang Aktif */}
                       <div className="space-y-3">
-                        <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Daftar Jurnal Riset Aktif</h3>
+                        <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Active Research Papers</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {research.map(res => (
                             <div key={res.id} className="p-4 border border-zinc-150 rounded-xl bg-white flex flex-col justify-between">
@@ -1471,15 +1438,15 @@ export default function App() {
               {cmsTab === "experience" && (
                 <div className="space-y-8">
                   <div>
-                    <h2 className="text-lg font-bold text-zinc-900">Kelola Karir Profesional</h2>
-                    <p className="text-xs text-zinc-400">Tambahkan atau hapus riwayat instansi tempat Anda berkontribusi.</p>
+                    <h2 className="text-lg font-bold text-zinc-900">Manage Professional Career</h2>
+                    <p className="text-xs text-zinc-400">Add or remove work history from institutions where you have contributed.</p>
                   </div>
 
                   <form onSubmit={handleAddExperience} className="p-4 border border-zinc-150 rounded-xl bg-zinc-50 space-y-4">
-                    <h3 className="text-xs font-bold text-zinc-600 uppercase">➕ Tambah Pengalaman</h3>
+                    <h3 className="text-xs font-bold text-zinc-600 uppercase">➕ Add Experience</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="space-y-1">
-                        <label className="text-xs font-bold text-zinc-500">Nama Perusahaan</label>
+                        <label className="text-xs font-bold text-zinc-500">Company Name</label>
                         <input 
                           type="text" 
                           value={newExperience.company} 
@@ -1489,7 +1456,7 @@ export default function App() {
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-xs font-bold text-zinc-500">Jabatan Pekerjaan</label>
+                        <label className="text-xs font-bold text-zinc-500">Job Position</label>
                         <input 
                           type="text" 
                           value={newExperience.role} 
@@ -1499,22 +1466,22 @@ export default function App() {
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-xs font-bold text-zinc-500">Rentang Waktu</label>
+                        <label className="text-xs font-bold text-zinc-500">Time Period</label>
                         <input 
                           type="text" 
                           value={newExperience.duration} 
                           onChange={(e) => setNewExperience({...newExperience, duration: e.target.value})}
-                          placeholder="2022 - Sekarang" 
+                          placeholder="2022 - Now" 
                           className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
                         />
                       </div>
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-zinc-500">Tanggung Jawab Karir</label>
+                      <label className="text-xs font-bold text-zinc-500">Career Responsibilities</label>
                       <textarea 
                         value={newExperience.description} 
                         onChange={(e) => setNewExperience({...newExperience, description: e.target.value})}
-                        placeholder="Uraikan pencapaian utama dan tumpukan teknologi kerja Anda..." 
+                        placeholder="Explain your main achievements and technical skills..." 
                         rows={3}
                         className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
                       />
@@ -1523,17 +1490,17 @@ export default function App() {
                       type="submit" 
                       className="bg-zinc-950 text-white text-xs font-bold tracking-wider uppercase px-4 py-2.5 rounded-lg hover:bg-zinc-800 transition-colors"
                     >
-                      Tambahkan Pengalaman
+                      Add Experience
                     </button>
                   </form>
 
                   <div className="space-y-3">
-                    <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Daftar Pengalaman Karir</h3>
+                    <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Active Career Experiences</h3>
                     <div className="divide-y divide-zinc-150">
                       {experience.map(item => (
                         <div key={item.id} className="py-4 flex items-start justify-between gap-4">
                           <div className="space-y-1">
-                            <h4 className="text-sm font-bold text-zinc-900">{item.role} <span className="text-zinc-400 font-normal">di</span> {item.company}</h4>
+                            <h4 className="text-sm font-bold text-zinc-900">{item.role} <span className="text-zinc-400 font-normal">at</span> {item.company}</h4>
                             <p className="text-xs text-zinc-400 font-bold">{item.duration}</p>
                             <p className="text-xs text-zinc-600 line-clamp-2">{item.description}</p>
                           </div>
@@ -1541,7 +1508,7 @@ export default function App() {
                             onClick={() => handleDeleteExperience(item.id)}
                             className="p-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 transition-colors"
                           >
-                            Hapus
+                            Delete
                           </button>
                         </div>
                       ))}
@@ -1554,30 +1521,30 @@ export default function App() {
               {cmsTab === "skills" && (
                 <div className="space-y-8">
                   <div>
-                    <h2 className="text-lg font-bold text-zinc-900">Kelola Matriks Keahlian</h2>
-                    <p className="text-xs text-zinc-400">Klasifikasikan kemampuan Anda ke dalam kategori frontend, backend, atau peralatan.</p>
+                    <h2 className="text-lg font-bold text-zinc-900">Manage Skill Matrix</h2>
+                    <p className="text-xs text-zinc-400">Classify your abilities into data analyst, data visualization, or tools categories.</p>
                   </div>
 
                   <form onSubmit={handleAddSkill} className="p-4 border border-zinc-150 rounded-xl bg-zinc-50 flex flex-col md:flex-row items-end gap-4">
                     <div className="flex-1 space-y-1">
-                      <label className="text-xs font-bold text-zinc-500">Nama Keahlian</label>
+                      <label className="text-xs font-bold text-zinc-500">Skill Name</label>
                       <input 
                         type="text" 
                         value={newSkill.name} 
                         onChange={(e) => setNewSkill({...newSkill, name: e.target.value})}
-                        placeholder="Contoh: NextJS" 
+                        placeholder="Example: NextJS" 
                         className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-zinc-500">Kategori Klasifikasi</label>
+                      <label className="text-xs font-bold text-zinc-500">Classification Category</label>
                       <select 
                         value={newSkill.category} 
                         onChange={(e) => setNewSkill({...newSkill, category: e.target.value})}
                         className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
                       >
-                        <option value="Frontend">Frontend</option>
-                        <option value="Backend">Backend</option>
+                        <option value="Data Analyst">Data Analyst</option>
+                        <option value="Data Visualization">Data Visualization</option>
                         <option value="Tools">Tools</option>
                       </select>
                     </div>
@@ -1585,12 +1552,12 @@ export default function App() {
                       type="submit" 
                       className="bg-zinc-950 text-white text-xs font-bold tracking-wider uppercase px-4 py-2.5 rounded-lg hover:bg-zinc-800 transition-colors"
                     >
-                      Tambahkan Tag
+                      Add Skill
                     </button>
                   </form>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {['Frontend', 'Backend', 'Tools'].map(category => {
+                    {['Data Analyst', 'Data Visualization', 'Tools'].map(category => {
                       const filtered = skills.filter(s => s.category?.toLowerCase() === category.toLowerCase());
                       return (
                         <div key={category} className="p-4 border border-zinc-150 rounded-xl bg-zinc-50/50 space-y-3">
@@ -1602,7 +1569,7 @@ export default function App() {
                                 <button 
                                   onClick={() => handleDeleteSkill(item.id)}
                                   className="text-red-400 hover:text-red-600 p-0.5"
-                                  title="Hapus Keahlian"
+                                  title="Delete Skill"
                                 >
                                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -1622,25 +1589,25 @@ export default function App() {
               {cmsTab === "education" && (
                 <div className="space-y-8">
                   <div>
-                    <h2 className="text-lg font-bold text-zinc-900">Kelola Pendidikan Akademis</h2>
-                    <p className="text-xs text-zinc-400">Atur latar belakang riwayat studi akademis Anda.</p>
+                    <h2 className="text-lg font-bold text-zinc-900">Manage Academic Education</h2>
+                    <p className="text-xs text-zinc-400">Organize your academic background and educational history.</p>
                   </div>
 
                   <form onSubmit={handleAddEducation} className="p-4 border border-zinc-150 rounded-xl bg-zinc-50 space-y-4">
-                    <h3 className="text-xs font-bold text-zinc-600 uppercase">➕ Tambah Pendidikan</h3>
+                    <h3 className="text-xs font-bold text-zinc-600 uppercase">➕ Add Education</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="space-y-1">
-                        <label className="text-xs font-bold text-zinc-500">Nama Universitas / Sekolah</label>
+                        <label className="text-xs font-bold text-zinc-500">University / School Name</label>
                         <input 
                           type="text" 
                           value={newEducation.school} 
                           onChange={(e) => setNewEducation({...newEducation, school: e.target.value})}
-                          placeholder="Universitas Indonesia" 
+                          placeholder="Indonesia University of Education" 
                           className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-xs font-bold text-zinc-500">Gelar Pendidikan</label>
+                        <label className="text-xs font-bold text-zinc-500">Educational Degree</label>
                         <input 
                           type="text" 
                           value={newEducation.degree} 
@@ -1650,7 +1617,7 @@ export default function App() {
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-xs font-bold text-zinc-500">Tahun Angkatan</label>
+                        <label className="text-xs font-bold text-zinc-500">Graduation Year</label>
                         <input 
                           type="text" 
                           value={newEducation.year} 
@@ -1661,11 +1628,11 @@ export default function App() {
                       </div>
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-zinc-500">Penjelasan Tambahan</label>
+                      <label className="text-xs font-bold text-zinc-500">Additional Information</label>
                       <textarea 
                         value={newEducation.description} 
                         onChange={(e) => setNewEducation({...newEducation, description: e.target.value})}
-                        placeholder="IPK, fokus riset skripsi, atau kegiatan organisasi kemahasiswaan..." 
+                        placeholder="GPA, research focus, or student organization activities..." 
                         rows={2}
                         className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
                       />
@@ -1674,12 +1641,12 @@ export default function App() {
                       type="submit" 
                       className="bg-zinc-950 text-white text-xs font-bold tracking-wider uppercase px-4 py-2.5 rounded-lg hover:bg-zinc-800 transition-colors"
                     >
-                      Simpan Pendidikan
+                      Save Education
                     </button>
                   </form>
 
                   <div className="space-y-3">
-                    <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Pendidikan yang Ditampilkan</h3>
+                    <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Education Displayed</h3>
                     <div className="divide-y divide-zinc-150">
                       {education.map(edu => (
                         <div key={edu.id} className="py-4 flex items-center justify-between gap-4">
@@ -1692,7 +1659,7 @@ export default function App() {
                             onClick={() => handleDeleteEducation(edu.id)}
                             className="p-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 transition-colors"
                           >
-                            Hapus
+                            Delete
                           </button>
                         </div>
                       ))}
@@ -1769,13 +1736,13 @@ export default function App() {
                   {selectedWork.githubLink && (
                     <a href={selectedWork.githubLink} target="_blank" rel="noreferrer" className="flex-1 md:flex-none justify-center text-sm font-bold text-zinc-700 hover:text-zinc-950 transition-all flex items-center gap-2 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 px-5 py-3 rounded-xl">
                       <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482C19.138 20.197 22 16.44 22 12.017 22 6.484 17.522 2 12 2z"/></svg>
-                      Lihat Repository
+                      View Repository
                     </a>
                   )}
                   {selectedWork.demoLink && (
                     <a href={selectedWork.demoLink} target="_blank" rel="noreferrer" className="flex-1 md:flex-none justify-center text-sm font-bold text-white bg-zinc-900 hover:bg-zinc-800 transition-all flex items-center gap-2 px-5 py-3 rounded-xl shadow-md">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                      Kunjungi Demo
+                      Visit Demo
                     </a>
                   )}
                 </div>
@@ -1804,24 +1771,24 @@ export default function App() {
               <div className="w-12 h-12 rounded-xl bg-zinc-100 text-zinc-900 font-bold mx-auto flex items-center justify-center text-lg shadow-sm border border-zinc-200">
                 🗝️
               </div>
-              <h2 className="text-xl font-bold text-zinc-900 tracking-tight">Gerbang CMS Admin</h2>
+              <h2 className="text-xl font-bold text-zinc-900 tracking-tight">Admin CMS Gate</h2>
               <p className="text-xs text-zinc-500 leading-relaxed">
-                Gunakan sandi admin untuk menambah atau mengedit matriks konten portofolio Anda.
+                Use the admin password to add or edit your portfolio content matrix.
               </p>
             </div>
 
             <form onSubmit={handleAdminLogin} className="space-y-4">
               <div className="space-y-1">
-                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block">Sandi Akses Admin</label>
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block">Admin Password</label>
                 <input 
                   type="password" 
                   value={loginPassword} 
                   onChange={(e) => setLoginPassword(e.target.value)}
-                  placeholder="Isi sandi..." 
+                  placeholder="Enter password..." 
                   className="w-full bg-zinc-50 border border-zinc-200 focus:border-zinc-900 focus:bg-white rounded-lg px-3 py-2 text-sm focus:outline-none transition-all font-mono"
                 />
                 <p className="text-[10px] text-zinc-400 italic pt-1 text-center">
-                  Bypass demo diaktifkan secara default. Klik "Verifikasi Sandi" langsung.
+                  Default activated bypass demo. Just click "Password Verification" directly.
                 </p>
               </div>
 
@@ -1837,7 +1804,7 @@ export default function App() {
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                     </svg>
-                    Verifikasi Sandi
+                    Password Verification
                   </>
                 )}
               </button>
@@ -1856,11 +1823,11 @@ export default function App() {
               {profile.name || "Alex Morgan"} — Portfolio Studio
             </h3>
             <p className="text-xs text-zinc-400">
-              Dibuat dengan detail arsitektur modern dan rendering tanpa latensi.
+              Made by a passionate frontend developer with a love for clean design and seamless user experience.
             </p>
           </div>
           <div className="flex items-center gap-6 text-xs font-semibold text-zinc-400">
-            <span>© 2026. Hak Cipta Dilindungi.</span>
+            <span>© 2026. Copyright Reserved.</span>
             <span className="text-zinc-300">|</span>
             <button 
               onClick={() => {
@@ -1872,7 +1839,7 @@ export default function App() {
               }}
               className="hover:text-zinc-900 transition-colors"
             >
-              Sistem Manajemen Portal
+              Portal Management System
             </button>
           </div>
         </div>
