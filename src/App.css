@@ -182,3 +182,20 @@
     border-right-color: var(--border);
   }
 }
+
+/* Fly-in text animation for hero */
+@keyframes flyInFromLeft {
+  0% { opacity: 0; transform: translateX(-28px) translateY(6px); }
+  60% { opacity: 1; transform: translateX(6px) translateY(0); }
+  100% { opacity: 1; transform: translateX(0) translateY(0); }
+}
+
+.fly-in {
+  animation: flyInFromLeft 680ms cubic-bezier(.2,.9,.2,1) both;
+}
+.fly-in-delay {
+  animation-delay: 160ms;
+}
+.fly-in-slow {
+  animation-duration: 920ms;
+}

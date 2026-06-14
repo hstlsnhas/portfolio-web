@@ -65,6 +65,7 @@ export default function App() {
 
   const [isLive, setIsLive] = useState(false);
   const [isAppInitializing, setIsAppInitializing] = useState(true);
+  const [introAnimated, setIntroAnimated] = useState(false);
   const [toast, setToast] = useState<{ message: string, type: string } | null>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginPassword, setLoginPassword] = useState("");
@@ -78,8 +79,20 @@ export default function App() {
   const ITEMS_PER_PAGE = 4;
 
   const [newSkill, setNewSkill] = useState({ name: "", category: "Data Analyst" });
-  const [newProject, setNewProject] = useState({ title: "", description: "", tech_stack: "", githubLink: "", demoLink: "", imageUrl: "" });
+  const [newProject, setNewProject] = useState({ title: "", description: "", tech_stack: "", githubLink: "", demoLink: "", imageUrl: "", gallery: [] as string[] });
+  const [newProjectGalleryUrl, setNewProjectGalleryUrl] = useState("");
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+
+  const addProjectGalleryImage = () => {
+    const value = newProjectGalleryUrl.trim();
+    if (!value) return;
+    setNewProject((prev) => ({
+      ...prev,
+      gallery: [...(Array.isArray(prev.gallery) ? prev.gallery : []), value],
+    }));
+    setNewProjectGalleryUrl("");
+    triggerToast("Gallery image added.", "success");
+  };
   const [editingExperienceId, setEditingExperienceId] = useState<string | null>(null);
   const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
   const [editingEducationId, setEditingEducationId] = useState<string | null>(null);
@@ -102,12 +115,14 @@ export default function App() {
     cv: false,
     project: false,
     research: false,
+    projectGallery: false,
   });
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({
     profilePhoto: 0,
     cv: 0,
     project: 0,
     research: 0,
+    projectGallery: 0,
   });
   const [hoveredWorkId, setHoveredWorkId] = useState<string | null>(null);
   const [activeExperienceId, setActiveExperienceId] = useState<string | null>(null);
@@ -116,6 +131,7 @@ export default function App() {
 
   // State untuk menampung data karya yang sedang dipilih untuk pop-up modal
   const [selectedWork, setSelectedWork] = useState<any>(null);
+  const [selectedGalleryImage, setSelectedGalleryImage] = useState<string | null>(null);
   const [workType, setWorkType] = useState<string | null>(null); // 'project' | 'research'
 
   const cmsTabs: { id: "profile" | "works" | "experience" | "skills" | "education"; label: string; icon: string }[] = [
@@ -165,6 +181,23 @@ export default function App() {
       section.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
+
+  // Set project page and scroll to top of the Projects section
+  const setProjectPageAndScroll = (newPage: number) => {
+    const clamped = Math.max(1, Math.min(newPage, totalProjectPages || 1));
+    setCurrentPage(clamped);
+    // ensure scroll happens after state update / layout
+    setTimeout(() => scrollToPortfolioSection('projects', 'works'), 80);
+  };
+
+  // Animate intro text when initial spinner finishes
+  useEffect(() => {
+    if (!isAppInitializing) {
+      const id = setTimeout(() => setIntroAnimated(true), 120);
+      return () => clearTimeout(id);
+    }
+    setIntroAnimated(false);
+  }, [isAppInitializing]);
 
   useEffect(() => {
     const sections = document.querySelectorAll('section[data-animate-section]');
@@ -445,7 +478,7 @@ export default function App() {
 
   const handleFileUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    type: 'profilePhoto' | 'cv' | 'project' | 'research'
+    type: 'profilePhoto' | 'cv' | 'project' | 'research' | 'projectGallery'
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -481,6 +514,11 @@ export default function App() {
         setProfile(prev => ({ ...prev, cvUrl: base64String }));
       } else if (type === 'project') {
         setNewProject(prev => ({ ...prev, imageUrl: base64String }));
+      } else if (type === 'projectGallery') {
+        setNewProject(prev => ({
+          ...prev,
+          gallery: [...(Array.isArray(prev.gallery) ? prev.gallery : []), base64String],
+        }));
       } else if (type === 'research') {
         setNewResearch(prev => ({ ...prev, imageUrl: base64String }));
       }
@@ -604,7 +642,8 @@ export default function App() {
 
   const resetProjectForm = () => {
     setEditingProjectId(null);
-    setNewProject({ title: "", description: "", tech_stack: "", githubLink: "", demoLink: "", imageUrl: "" });
+    setNewProject({ title: "", description: "", tech_stack: "", githubLink: "", demoLink: "", imageUrl: "", gallery: [] });
+    setNewProjectGalleryUrl("");
   };
 
   const startEditProject = (project: any) => {
@@ -616,6 +655,7 @@ export default function App() {
       githubLink: project.githubLink || "",
       demoLink: project.demoLink || "",
       imageUrl: project.imageUrl || "",
+      gallery: project.gallery || [],
     });
   };
 
@@ -873,24 +913,26 @@ export default function App() {
               </span>
             </div>
 
-            <div className="hidden md:flex items-center gap-2">
-              {[
-                { id: 'about', label: 'About Me', section: 'hero' },
-                { id: 'projects', label: 'Projects', section: 'works' },
-                { id: 'work', label: 'Work', section: 'experience' },
-                { id: 'skills', label: 'Skills', section: 'skills' },
-                { id: 'education', label: 'Education', section: 'education' },
-              ].map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => scrollToPortfolioSection(item.id as any, item.section)}
-                  className={`rounded-full px-3 py-2 text-xs font-semibold transition-all ${portfolioSectionTab === item.id ? 'bg-zinc-950 text-white' : 'bg-white text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 border border-zinc-200'}`}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
+            {!(activeTab === 'cms' && isAdmin) && (
+              <div className="hidden md:flex items-center gap-2">
+                {[
+                  { id: 'about', label: 'About Me', section: 'hero' },
+                  { id: 'projects', label: 'Projects', section: 'works' },
+                  { id: 'work', label: 'Work', section: 'experience' },
+                  { id: 'skills', label: 'Skills', section: 'skills' },
+                  { id: 'education', label: 'Education', section: 'education' },
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => scrollToPortfolioSection(item.id as any, item.section)}
+                    className={`rounded-full px-3 py-2 text-xs font-semibold transition-all ${portfolioSectionTab === item.id ? 'bg-zinc-950 text-white' : 'bg-white text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 border border-zinc-200'}`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="hidden md:flex items-center gap-6">
@@ -1000,13 +1042,13 @@ export default function App() {
             onMouseLeave={() => setHeroMotion({ x: 0, y: 0 })}
             className={`${sectionMotionClass('hero')} scroll-mt-28 md:scroll-mt-32 flex flex-col md:grid md:grid-cols-12 md:text-left md:items-center gap-8 pt-4 pb-8 border-b border-zinc-100`}
           >
-            <div className="col-span-1 md:col-span-8 space-y-6 order-last md:order-first">
+            <div className={`col-span-1 md:col-span-8 space-y-6 order-last md:order-first transition-all ${introAnimated ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
               <div className="space-y-3">
                 <span className="text-sm font-bold tracking-widest text-zinc-400 uppercase">Open for Collaboration</span>
-                <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-zinc-900 tracking-tight leading-tight">
+                <h1 className={`text-4xl md:text-5xl lg:text-6xl font-extrabold text-zinc-900 tracking-tight leading-tight ${introAnimated ? 'fly-in' : 'opacity-0'}`}>
                   Hi, I'm {profile.name || "Portfolio Creator"}
                 </h1>
-                <p className="text-xl md:text-2xl font-medium text-zinc-600">
+                <p className={`text-xl md:text-2xl font-medium text-zinc-600 ${introAnimated ? 'fly-in fly-in-delay' : 'opacity-0'}`}>
                   {profile.title || "Crafting modern web experiences"}
                 </p>
               </div>
@@ -1242,7 +1284,7 @@ export default function App() {
                 {paginatedProjects.length > 0 && totalProjectPages > 1 && (
                   <div className="flex items-center justify-center gap-4 pt-4">
                     <button
-                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                      onClick={() => setProjectPageAndScroll(Math.max(currentPage - 1, 1))}
                       disabled={currentPage === 1}
                       className="px-4 py-2 text-xs font-bold bg-zinc-100 hover:bg-zinc-200 text-zinc-800 disabled:opacity-40 rounded-lg transition-all"
                     >
@@ -1252,7 +1294,7 @@ export default function App() {
                       Page {currentPage} of {totalProjectPages}
                     </span>
                     <button
-                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalProjectPages))}
+                      onClick={() => setProjectPageAndScroll(Math.min(currentPage + 1, totalProjectPages))}
                       disabled={currentPage === totalProjectPages}
                       className="px-4 py-2 text-xs font-bold bg-zinc-900 hover:bg-zinc-800 text-white disabled:opacity-40 rounded-lg transition-all"
                     >
@@ -1812,6 +1854,65 @@ export default function App() {
                                 </button>
                               )}
                             </div>
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-xs font-bold text-zinc-500">Gallery Images</label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={newProjectGalleryUrl}
+                                onChange={(e) => setNewProjectGalleryUrl(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    addProjectGalleryImage();
+                                  }
+                                }}
+                                placeholder="Add gallery image URL"
+                                className="flex-1 bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
+                              />
+                              <button
+                                type="button"
+                                onClick={addProjectGalleryImage}
+                                className="text-xs font-semibold uppercase tracking-wide px-3 py-2 rounded-lg bg-zinc-950 text-white hover:bg-zinc-800 transition-colors"
+                              >
+                                Add
+                              </button>
+                            </div>
+                            <div className="flex items-center gap-2 mt-2">
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => handleFileUpload(e, 'projectGallery')}
+                                disabled={isUploading.projectGallery}
+                                className="text-xs file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-zinc-100 file:text-zinc-700 hover:file:bg-zinc-200 cursor-pointer"
+                              />
+                              {isUploading.projectGallery && (
+                                <span className="text-xs text-zinc-500 animate-pulse font-semibold">
+                                  Uploading gallery image ({uploadProgress.projectGallery}%)…
+                                </span>
+                              )}
+                            </div>
+                            {newProject.gallery.length > 0 && (
+                              <div className="flex flex-wrap gap-2">
+                                {newProject.gallery.map((img, idx) => (
+                                  <div key={idx} className="inline-flex items-center gap-2 rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-700 border border-zinc-200">
+                                    <span className="truncate max-w-[180px]">{img}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setNewProject((prev) => ({
+                                        ...prev,
+                                        gallery: prev.gallery.filter((_, i) => i !== idx),
+                                      }))}
+                                      className="text-zinc-500 hover:text-red-600"
+                                      title="Remove gallery image"
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         </div>
 
@@ -2422,10 +2523,11 @@ export default function App() {
           10.5. MODAL DETAIL KARYA (POP-UP)
           ============================================================================ */}
       {selectedWork && (
-        <div className="fixed inset-0 bg-zinc-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6 animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden shadow-2xl relative flex flex-col">
+        <>
+          <div className="fixed inset-0 bg-zinc-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6 animate-fade-in">
+            <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden shadow-2xl relative flex flex-col">
 
-            {/* Tombol Tutup Modal */}
+              {/* Tombol Tutup Modal */}
             <button
               onClick={() => { setSelectedWork(null); setWorkType(null); }}
               className="absolute top-4 right-4 z-10 bg-white/50 backdrop-blur-md border border-zinc-200 text-zinc-600 hover:text-zinc-900 hover:bg-white p-2 rounded-full transition-all shadow-sm"
@@ -2473,6 +2575,31 @@ export default function App() {
                 </div>
               )}
 
+              {workType === 'project' && Array.isArray(selectedWork.gallery) && selectedWork.gallery.length > 0 && (
+                <div className="space-y-4">
+                  <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-widest border-b border-zinc-100 pb-2">Project Gallery</h3>
+                  <div className="max-h-64 overflow-y-auto pr-1">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {selectedWork.gallery.map((imageUrl: string, idx: number) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setSelectedGalleryImage(imageUrl)}
+                          className="overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-100 focus:outline-none focus:ring-2 focus:ring-zinc-500"
+                        >
+                          <img
+                            src={imageUrl}
+                            alt={`${selectedWork.title} gallery ${idx + 1}`}
+                            className="w-full h-auto object-cover transition-transform duration-300 hover:scale-105"
+                            onError={(e) => { (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=800&q=80'; }}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Tombol Aksi Modal */}
               {workType === 'project' && (selectedWork.githubLink || selectedWork.demoLink) && (
                 <div className="flex flex-wrap items-center gap-3 pt-4 border-t border-zinc-100">
@@ -2493,6 +2620,30 @@ export default function App() {
             </div>
           </div>
         </div>
+
+        {selectedGalleryImage && (
+          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+            <button
+              type="button"
+              onClick={() => setSelectedGalleryImage(null)}
+              className="absolute top-4 right-4 z-50 rounded-full bg-white/90 p-3 text-zinc-900 shadow-lg hover:bg-white transition-colors"
+              aria-label="Close gallery zoom"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <div className="max-w-[90vw] max-h-[90vh] overflow-auto rounded-3xl border border-white/10 shadow-2xl bg-black">
+              <img
+                src={selectedGalleryImage}
+                alt="Gallery zoom"
+                className="w-full h-auto object-contain"
+                onError={(e) => { (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=800&q=80'; }}
+              />
+            </div>
+          </div>
+        )}
+      </>
       )}
 
 
