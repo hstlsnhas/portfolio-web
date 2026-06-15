@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import abcd from "./assets/hero.png";
 import {
@@ -132,6 +132,8 @@ export default function App() {
   // State untuk menampung data karya yang sedang dipilih untuk pop-up modal
   const [selectedWork, setSelectedWork] = useState<any>(null);
   const [selectedGalleryImage, setSelectedGalleryImage] = useState<string | null>(null);
+  const projectFormRef = useRef<HTMLFormElement | null>(null);
+  const researchFormRef = useRef<HTMLFormElement | null>(null);
   const [workType, setWorkType] = useState<string | null>(null); // 'project' | 'research'
 
   const cmsTabs: { id: "profile" | "works" | "experience" | "skills" | "education"; label: string; icon: string }[] = [
@@ -174,6 +176,14 @@ export default function App() {
     return `transition-all duration-700 ease-out ${visibleSections[key] ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`;
   };
 
+  const sectionToTabMap: Record<string, "about" | "projects" | "work" | "skills" | "education"> = {
+    hero: 'about',
+    works: 'projects',
+    experience: 'work',
+    skills: 'skills',
+    education: 'education',
+  };
+
   const scrollToPortfolioSection = (tabId: "about" | "projects" | "work" | "skills" | "education", sectionId: string) => {
     setPortfolioSectionTab(tabId);
     const section = document.querySelector(`section[data-animate-section='${sectionId}']`);
@@ -181,6 +191,16 @@ export default function App() {
       section.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
+
+  useEffect(() => {
+    if (!editingProjectId || !projectFormRef.current) return;
+    projectFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [editingProjectId]);
+
+  useEffect(() => {
+    if (!editingResearchId || !researchFormRef.current) return;
+    researchFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [editingResearchId]);
 
   // Set project page and scroll to top of the Projects section
   const setProjectPageAndScroll = (newPage: number) => {
@@ -203,19 +223,82 @@ export default function App() {
     const sections = document.querySelectorAll('section[data-animate-section]');
     if (!sections.length) return;
 
-    const observer = new IntersectionObserver((entries) => {
+    /*
+    const intersectionRatios: Record<string, number> = {};
+    const updateActiveSection = () => {
+      let maxRatio = 0;
+      let activeSectionId: string | null = null;
+      for (const[sectionId, ratio] of Object.entries(intersectionRatios)) {
+        if (ratio > maxRatio) {
+          maxRatio = ratio;
+          activeSectionId = sectionId;
+        }
+      }
+      if (activeSectionId && sectionToTabMap[activeSectionId]) {
+        setPortfolioSectionTab(sectionToTabMap[activeSectionId]);
+      }
+    };
+    */
+
+    // Observer 1
+    const animObserver = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         const sectionId = entry.target.getAttribute('data-animate-section');
-        if (sectionId && entry.isIntersecting) {
-          setVisibleSections((prev) => ({ ...prev, [sectionId]: true }));
+        if (!sectionId) return;
+        if (entry.isIntersecting) {
+          setVisibleSections((prev) => ({...prev, [sectionId]: true }));
         }
       });
-    }, { threshold: 0.18 });
+    }, {
+      rootMargin: '-10% 0px -10% 0px',
+      threshold: 0
+    });
 
-    sections.forEach((section) => observer.observe(section));
-    return () => observer.disconnect();
-  }, []);
+    // Observer 2
+    const updateActiveNav = () => {
+      const liveSections = document.querySelectorAll('section[data-animate-section]');
+      const navOffset = window.innerHeight * 0.35;
+      let closestSection: string | null = null;
+      let closestDist = Infinity;
+ 
+      liveSections.forEach((section) => {
+        const sectionId = section.getAttribute('data-animate-section');
+        if (!sectionId || !(sectionToTabMap as Record<string, string>)[sectionId]) return;
+        const rect = section.getBoundingClientRect();
+        const dist = Math.abs(rect.top - navOffset);
+        // Only consider sections whose top has entered the upper portion of the screen
+        if (rect.top <= navOffset + 100 && dist < closestDist) {
+          closestDist = dist;
+          closestSection = sectionId;
+        }
+      });
+ 
+      if (closestSection && (sectionToTabMap as Record<string, string>)[closestSection]) {
+        setPortfolioSectionTab((sectionToTabMap as Record<string, "about" | "projects" | "work" | "skills" | "education">)[closestSection]);
+      }
+    };
+ 
+    const navObserver = new IntersectionObserver(() => {
+      updateActiveNav();
+    }, {
+      rootMargin: '0px 0px -20% 0px',
+      threshold: [0, 0.25, 0.5, 0.75, 1.0],
+    });
 
+    window.addEventListener('scroll', updateActiveNav, { passive: true });
+ 
+    sections.forEach((section) => {
+      animObserver.observe(section);
+      navObserver.observe(section);
+    });
+ 
+    return () => {
+      animObserver.disconnect();
+      navObserver.disconnect();
+      window.removeEventListener('scroll', updateActiveNav);
+    };
+  }, [isAppInitializing, isDataLoading]);
+  
   const sortedProjects = useMemo(() => {
     return [...projects].sort((a, b) => {
       const titleA = (a.title || '').toLowerCase();
@@ -1803,7 +1886,7 @@ export default function App() {
                   {cmsWorksSubTab === "projects" && (
                     <div className="space-y-6">
                       {/* Form Tambah / Edit Proyek */}
-                      <form onSubmit={handleSaveProject} className="p-4 border border-zinc-150 rounded-xl bg-zinc-50 space-y-4">
+                      <form ref={projectFormRef} onSubmit={handleSaveProject} className="p-4 border border-zinc-150 rounded-xl bg-zinc-50 space-y-4">
                         <h3 className="text-xs font-bold text-zinc-600 uppercase tracking-wider">
                           {editingProjectId ? "✏️ Edit Project" : "➕ Add New Project"}
                         </h3>
@@ -2030,7 +2113,7 @@ export default function App() {
                   {cmsWorksSubTab === "research" && (
                     <div className="space-y-6">
                       {/* Form Tambah Riset */}
-                      <form onSubmit={handleAddResearch} className="p-4 border border-zinc-150 rounded-xl bg-zinc-50 space-y-4">
+                      <form ref={researchFormRef} onSubmit={handleAddResearch} className="p-4 border border-zinc-150 rounded-xl bg-zinc-50 space-y-4">
                         <h3 className="text-xs font-bold text-zinc-600 uppercase tracking-wider">
                           {editingResearchId ? "✏️ Edit Research" : "➕ Add New Research Result"}
                         </h3>
