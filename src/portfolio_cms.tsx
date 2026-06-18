@@ -14,7 +14,8 @@ import {
   collection,
   onSnapshot,
   addDoc,
-  deleteDoc
+  deleteDoc,
+  writeBatch
 } from 'firebase/firestore';
 declare const __firebase_config: string;
 declare const __app_id: string;
@@ -79,7 +80,7 @@ export default function App() {
   const ITEMS_PER_PAGE = 4;
 
   const [newSkill, setNewSkill] = useState({ name: "", category: "Data Analyst" });
-  const [newProject, setNewProject] = useState({ title: "", description: "", tech_stack: "", githubLink: "", demoLink: "", dashboardLink: "", imageUrl: "", gallery: [] as string[] });
+  const [newProject, setNewProject] = useState({ title: "", description: "", tech_stack: "", githubLink: "", demoLink: "", dashboardLink: "", imageUrl: "", gallery: [] as string[], appLanguages: [] as string[] });
   const [newProjectGalleryUrl, setNewProjectGalleryUrl] = useState("");
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
 
@@ -128,10 +129,14 @@ export default function App() {
   const [activeExperienceId, setActiveExperienceId] = useState<string | null>(null);
   const [hoveredSkillCategory, setHoveredSkillCategory] = useState<string | null>(null);
   const [hoveredEducationId, setHoveredEducationId] = useState<string | null>(null);
+  const [draggedExperienceIndex, setDraggedExperienceIndex] = useState<number | null>(null);
+  const [dragOverExperienceIndex, setDragOverExperienceIndex] = useState<number | null>(null);
 
   // State untuk menampung data karya yang sedang dipilih untuk pop-up modal
   const [selectedWork, setSelectedWork] = useState<any>(null);
   const [selectedGalleryImage, setSelectedGalleryImage] = useState<string | null>(null);
+  const [gallerySlideIndex, setGallerySlideIndex] = useState(0);
+  const galleryTouchStartX = useRef<number | null>(null);
   const projectFormRef = useRef<HTMLFormElement | null>(null);
   const researchFormRef = useRef<HTMLFormElement | null>(null);
   const [workType, setWorkType] = useState<string | null>(null); // 'project' | 'research'
@@ -139,7 +144,7 @@ export default function App() {
   const cmsTabs: { id: "profile" | "works" | "experience" | "skills" | "education"; label: string; icon: string }[] = [
     { id: "profile", label: "Profile Information", icon: "👤" },
     { id: "works", label: "Works (Projects & Research)", icon: "💼" },
-    { id: "experience", label: "Work Experience", icon: "🏢" },
+    { id: "experience", label: "Experience", icon: "🏢" },
     { id: "skills", label: "Skills", icon: "⚡" },
     { id: "education", label: "Education", icon: "🎓" }
   ];
@@ -201,6 +206,11 @@ export default function App() {
     if (!editingResearchId || !researchFormRef.current) return;
     researchFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [editingResearchId]);
+
+  // Reset position
+  useEffect(() => {
+    setGallerySlideIndex(0);
+  }, [selectedWork]);
 
   // Set project page and scroll to top of the Projects section
   const setProjectPageAndScroll = (newPage: number) => {
@@ -442,6 +452,7 @@ export default function App() {
     const unsubExp = onSnapshot(expColRef, (snap) => {
       const list: any[] = [];
       snap.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
+      list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       setExperience(list);
       markLoaded();
     }, (err) => { console.error("Error Pengalaman Sync: ", err); markLoaded(); });
@@ -693,11 +704,12 @@ export default function App() {
       setNewExperience({ company: "", role: "", duration: "", description: "" });
       return;
     }
-
-    const item = { ...newExperience, id: "exp-" + Date.now() };
+    
+    const newOrder = experience.length;
+    const item = { ...newExperience, order: newOrder, id: "exp-" + Date.now() };
     if (isLive && db) {
       try {
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'experience'), newExperience);
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'experience'), { ...newExperience, order: newOrder });
         triggerToast("Work experience successfully added to cloud!", "success");
       } catch (e) {
         triggerToast("Failed to upload work experience.", "error");
@@ -725,7 +737,7 @@ export default function App() {
 
   const resetProjectForm = () => {
     setEditingProjectId(null);
-    setNewProject({ title: "", description: "", tech_stack: "", githubLink: "", demoLink: "", dashboardLink: "", imageUrl: "", gallery: [] });
+    setNewProject({ title: "", description: "", tech_stack: "", githubLink: "", demoLink: "", dashboardLink: "", imageUrl: "", gallery: [], appLanguages: [] });
     setNewProjectGalleryUrl("");
   };
 
@@ -740,6 +752,7 @@ export default function App() {
       dashboardLink: project.dashboardLink || "",
       imageUrl: project.imageUrl || "",
       gallery: project.gallery || [],
+      appLanguages: project.appLanguages || [],
     });
   };
 
@@ -811,6 +824,28 @@ export default function App() {
     }
     const ref = doc(db, 'artifacts', appId, 'public', 'data', 'experience', id);
     await setDoc(ref, updatedData, { merge: true });
+  };
+
+  // Menyusun ulang urutan Work Experience setelah drag-and-drop.
+  // Menerima array experience yang sudah dalam urutan baru, lalu
+  // memperbarui field `order` pada tiap item secara lokal & ke Firestore.
+  const handleReorderExperience = async (reorderedList: any[]) => {
+    const withNewOrder = reorderedList.map((item, idx) => ({ ...item, order: idx }));
+    setExperience(withNewOrder);
+
+    if (isLive && db) {
+      try {
+        const batch = writeBatch(db);
+        withNewOrder.forEach((item) => {
+          const ref = doc(db, 'artifacts', appId, 'public', 'data', 'experience', item.id);
+          batch.update(ref, { order: item.order });
+        });
+        await batch.commit();
+      } catch (e) {
+        console.error("Failed to save new experience order:", e);
+        triggerToast("Failed to save new order. Please try again.", "error");
+      }
+    }
   };
 
   const handleUpdateSkill = async (id: string, updatedData: any) => {
@@ -1349,7 +1384,7 @@ export default function App() {
                                     target="_blank"
                                     rel="noreferrer"
                                     onClick={(e) => e.stopPropagation()}
-                                    className="text-xs font-bold text-zinc-900 transition-all flex items-center gap-1.5 bg-zinc-100 hover:bg-zinc-200 px-3 py-2 rounded-lg"
+                                    className="text-xs font-bold text-zinc-700 transition-all flex items-center gap-1.5 bg-zinc-100 hover:bg-zinc-200 px-3 py-2 rounded-lg"
                                   >
                                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -2061,6 +2096,46 @@ export default function App() {
                         </div>
 
                         <div className="space-y-1">
+                          <label className="text-xs font-bold text-zinc-500">Interface Language</label>
+                          <div className="flex items-center gap-4 pt-1">
+                            <label className="flex items-center gap-2 text-sm text-zinc-700 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={newProject.appLanguages.includes("id")}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  setNewProject({
+                                    ...newProject,
+                                    appLanguages: checked
+                                      ? [...newProject.appLanguages, "id"]
+                                      : newProject.appLanguages.filter((l) => l !== "id"),
+                                  });
+                                }}
+                                className="w-4 h-4 accent-zinc-900"
+                              />
+                              Bahasa Indonesia
+                            </label>
+                            <label className="flex items-center gap-2 text-sm text-zinc-700 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={newProject.appLanguages.includes("en")}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  setNewProject({
+                                    ...newProject,
+                                    appLanguages: checked
+                                      ? [...newProject.appLanguages, "en"]
+                                      : newProject.appLanguages.filter((l) => l !== "en"),
+                                  });
+                                }}
+                                className="w-4 h-4 accent-zinc-900"
+                              />
+                              English
+                            </label>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
                           <label className="text-xs font-bold text-zinc-500">Short Description</label>
                           <textarea
                             value={newProject.description}
@@ -2351,13 +2426,46 @@ export default function App() {
 
                   <div className="space-y-3">
                     <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Active Career Experiences</h3>
+                    <p className="text-[11px] text-zinc-400">Drag the handle (⠿) to reorder. The new order is saved automatically.</p>
                     <div className="divide-y divide-zinc-150">
-                      {experience.map(item => (
-                        <div key={item.id} className="py-4 flex items-start justify-between gap-4">
-                          <div className="space-y-1">
-                            <h4 className="text-sm font-bold text-zinc-900">{item.role} <span className="text-zinc-400 font-normal">at</span> {item.company}</h4>
-                            <p className="text-xs text-zinc-400 font-bold">{item.duration}</p>
-                            <p className="text-xs text-zinc-600 line-clamp-2">{item.description}</p>
+                      {experience.map((item, index) => (
+                        <div
+                          key={item.id}
+                          draggable
+                          onDragStart={() => setDraggedExperienceIndex(index)}
+                          onDragEnter={() => {
+                            if (draggedExperienceIndex === null || draggedExperienceIndex === index) return;
+                            setDragOverExperienceIndex(index);
+                          }}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDragEnd={() => {
+                            if (draggedExperienceIndex !== null && dragOverExperienceIndex !== null && draggedExperienceIndex !== dragOverExperienceIndex) {
+                              const reordered = [...experience];
+                              const [moved] = reordered.splice(draggedExperienceIndex, 1);
+                              reordered.splice(dragOverExperienceIndex, 0, moved);
+                              handleReorderExperience(reordered);
+                            }
+                            setDraggedExperienceIndex(null);
+                            setDragOverExperienceIndex(null);
+                          }}
+                          className={`py-4 flex items-start justify-between gap-4 transition-colors ${draggedExperienceIndex === index ? "opacity-40" : ""} ${dragOverExperienceIndex === index && draggedExperienceIndex !== index ? "bg-zinc-50 border-t-2 border-zinc-900" : ""}`}
+                        >
+                          <div className="flex items-start gap-3 flex-1">
+                            <div
+                              className="cursor-grab active:cursor-grabbing text-zinc-300 hover:text-zinc-500 transition-colors pt-1 shrink-0"
+                              title="Drag to reorder"
+                            >
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                <circle cx="9" cy="6" r="1.5" /><circle cx="15" cy="6" r="1.5" />
+                                <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
+                                <circle cx="9" cy="18" r="1.5" /><circle cx="15" cy="18" r="1.5" />
+                              </svg>
+                            </div>
+                            <div className="space-y-1">
+                              <h4 className="text-sm font-bold text-zinc-900">{item.role} <span className="text-zinc-400 font-normal">at</span> {item.company}</h4>
+                              <p className="text-xs text-zinc-400 font-bold">{item.duration}</p>
+                              <p className="text-xs text-zinc-600 line-clamp-2">{item.description}</p>
+                            </div>
                           </div>
                           <div className="flex items-center gap-2">
                             <button
@@ -2635,42 +2743,46 @@ export default function App() {
       {selectedWork && (
         <>
           <div className="fixed inset-0 bg-zinc-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6 animate-fade-in">
-            <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden shadow-2xl relative flex flex-col">
+            <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] shadow-2xl relative flex flex-col overflow-hidden">
 
-              {/* Tombol Tutup Modal */}
+            {/* Tombol Tutup Modal — terkunci di pojok kanan atas modal, tidak ikut scroll */}
             <button
               onClick={() => { setSelectedWork(null); setWorkType(null); }}
-              className="absolute top-4 right-4 z-10 bg-white/50 backdrop-blur-md border border-zinc-200 text-zinc-600 hover:text-zinc-900 hover:bg-white p-2 rounded-full transition-all shadow-sm"
+              className="absolute top-4 right-4 z-20 bg-white/80 backdrop-blur-md border border-zinc-200 text-zinc-600 hover:text-zinc-900 hover:bg-white p-2 rounded-full transition-all shadow-sm"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
 
-            {/* Gambar Utama Modal */}
-            <div className="w-full h-64 md:h-80 bg-zinc-100 relative shrink-0">
-              <img
-                src={selectedWork.imageUrl || "https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=800&q=80"}
-                alt={selectedWork.title}
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/80 via-zinc-900/30 to-transparent" />
-              <div className="absolute bottom-6 left-6 right-6">
-                <span className={`inline-flex items-center text-[10px] font-bold px-2.5 py-1 rounded-md mb-3 shadow-sm uppercase tracking-wider ${workType === 'project' ? 'bg-white/90 text-zinc-900' : 'bg-indigo-500 text-white'}`}>
-                  {workType === 'project' ? 'Application Project' : 'Research'}
-                </span>
-                <h2 className="text-2xl md:text-4xl font-extrabold text-white tracking-tight">{selectedWork.title}</h2>
-              </div>
-            </div>
+            {/* Area scroll tunggal: gambar header + konten ikut bergeser bersama */}
+            <div className="overflow-y-auto">
 
-            {/* Konten Scrollable */}
-            <div className="p-6 md:p-8 overflow-y-auto space-y-8">
-              <div className="space-y-4">
-                <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-widest border-b border-zinc-100 pb-2">Full Description</h3>
-                <p className="text-zinc-600 leading-relaxed text-sm md:text-base whitespace-pre-wrap">
-                  {selectedWork.description}
-                </p>
+              {/* Gambar Utama Modal */}
+              <div className="w-full h-64 md:h-80 bg-zinc-100 relative shrink-0">
+                <img
+                  src={selectedWork.imageUrl || "https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=800&q=80"}
+                  alt={selectedWork.title}
+                  className="w-full h-full object-cover"
+                />
+                {/* Gradient Scrim: gelap pekat di bawah (area teks), memudar transparan ke atas */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
+                <div className="absolute bottom-6 left-6 right-6">
+                  <span className={`inline-flex items-center text-[10px] font-bold px-2.5 py-1 rounded-md mb-3 shadow-sm uppercase tracking-wider border border-white/40 ${workType === 'project' ? 'bg-white/10 text-white' : 'bg-indigo-500/80 text-white'}`}>
+                    {workType === 'project' ? 'Application Project' : 'Research'}
+                  </span>
+                  <h2 className="text-2xl md:text-4xl font-extrabold text-white tracking-tight">{selectedWork.title}</h2>
+                </div>
               </div>
+
+              {/* Konten */}
+              <div className="p-6 md:p-8 space-y-8">
+                <div className="space-y-4">
+                  <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-widest border-b border-zinc-100 pb-2">Full Description</h3>
+                  <p className="text-zinc-600 leading-relaxed text-sm md:text-base whitespace-pre-wrap">
+                    {selectedWork.description}
+                  </p>
+                </div>
 
               {workType === 'project' && selectedWork.tech_stack && (
                 <div className="space-y-4">
@@ -2681,6 +2793,24 @@ export default function App() {
                         {tech.trim()}
                       </span>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {workType === 'project' && Array.isArray(selectedWork.appLanguages) && selectedWork.appLanguages.length > 0 && (
+                <div className="space-y-4">
+                  <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-widest border-b border-zinc-100 pb-2">Interface Language</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedWork.appLanguages.includes("id") && (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-zinc-100 text-zinc-800 border border-zinc-200">
+                        Bahasa Indonesia
+                      </span>
+                    )}
+                    {selectedWork.appLanguages.includes("en") && (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-zinc-100 text-zinc-800 border border-zinc-200">
+                        English
+                      </span>
+                    )}
                   </div>
                 </div>
               )}
@@ -2720,7 +2850,7 @@ export default function App() {
                     </a>
                   )}
                   {selectedWork.dashboardLink && (
-                    <a href={selectedWork.dashboardLink} target="_blank" rel="noreferrer" className="flex-1 md:flex-none justify-center text-sm font-bold text-zinc-900 bg-zinc-100 hover:bg-zinc-200 transition-all flex items-center gap-2 px-5 py-3 rounded-xl">
+                    <a href={selectedWork.dashboardLink} target="_blank" rel="noreferrer" className="flex-1 md:flex-none justify-center text-sm font-bold text-zinc-700 bg-zinc-100 hover:bg-zinc-200 transition-all flex items-center gap-2 px-5 py-3 rounded-xl">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
                       View Dashboard
                     </a>
@@ -2733,12 +2863,28 @@ export default function App() {
                   )}
                 </div>
               )}
+                </div>
+              </div>
             </div>
           </div>
-        </div>
 
-        {selectedGalleryImage && (
-          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+        {selectedGalleryImage && Array.isArray(selectedWork?.gallery) && (
+          <div
+            className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+            onTouchStart={(e) => { galleryTouchStartX.current = e.touches[0].clientX; }}
+            onTouchEnd={(e) => {
+              if (galleryTouchStartX.current === null) return;
+              const deltaX = e.changedTouches[0].clientX - galleryTouchStartX.current;
+              const threshold = 40;
+              const total = selectedWork.gallery.length;
+              if (deltaX > threshold) {
+                setGallerySlideIndex((i) => (i - 1 + total) % total);
+              } else if (deltaX < -threshold) {
+                setGallerySlideIndex((i) => (i + 1) % total);
+              }
+              galleryTouchStartX.current = null;
+            }}
+          >
             <button
               type="button"
               onClick={() => setSelectedGalleryImage(null)}
@@ -2749,14 +2895,56 @@ export default function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
-            <div className="max-w-[90vw] max-h-[90vh] overflow-auto rounded-3xl border border-white/10 shadow-2xl bg-black">
+
+            {/* Tombol panah navigasi */}
+            {selectedWork.gallery.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setGallerySlideIndex((i) => (i - 1 + selectedWork.gallery.length) % selectedWork.gallery.length); }}
+                  aria-label="Previous image"
+                  className="absolute left-3 md:left-6 top-1/2 -translate-y-1/2 z-50 bg-white/90 hover:bg-white text-zinc-900 p-3 rounded-full shadow-lg transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setGallerySlideIndex((i) => (i + 1) % selectedWork.gallery.length); }}
+                  aria-label="Next image"
+                  className="absolute right-3 md:right-6 top-1/2 -translate-y-1/2 z-50 bg-white/90 hover:bg-white text-zinc-900 p-3 rounded-full shadow-lg transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </>
+            )}
+
+            <div className="max-w-[90vw] max-h-[80vh] overflow-hidden rounded-3xl border border-white/10 shadow-2xl bg-black select-none">
               <img
-                src={selectedGalleryImage}
-                alt="Gallery zoom"
-                className="w-full h-auto object-contain"
+                src={selectedWork.gallery[gallerySlideIndex] || selectedGalleryImage}
+                alt={`Gallery zoom ${gallerySlideIndex + 1}`}
+                className="w-full h-full max-h-[80vh] object-contain transition-opacity duration-300"
                 onError={(e) => { (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=800&q=80'; }}
               />
             </div>
+
+            {/* Indikator dots */}
+            {selectedWork.gallery.length > 1 && (
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 z-50">
+                {selectedWork.gallery.map((_: string, idx: number) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setGallerySlideIndex(idx); }}
+                    aria-label={`Go to image ${idx + 1}`}
+                    className={`h-2 rounded-full transition-all ${idx === gallerySlideIndex ? "w-6 bg-white" : "w-2 bg-white/40 hover:bg-white/70"}`}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         )}
       </>
