@@ -79,7 +79,7 @@ export default function App() {
   const [projectSortOrder, setProjectSortOrder] = useState<"asc" | "desc">("asc");
   const ITEMS_PER_PAGE = 4;
 
-  const [newSkill, setNewSkill] = useState({ name: "", category: "Data Analyst" });
+  const [newSkill, setNewSkill] = useState({ name: "", category: "Technical Stack" });
   const [newProject, setNewProject] = useState({ title: "", description: "", tech_stack: "", githubLink: "", demoLink: "", dashboardLink: "", imageUrl: "", gallery: [] as string[], appLanguages: [] as string[] });
   const [newProjectGalleryUrl, setNewProjectGalleryUrl] = useState("");
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
@@ -131,12 +131,20 @@ export default function App() {
   const [hoveredEducationId, setHoveredEducationId] = useState<string | null>(null);
   const [draggedExperienceIndex, setDraggedExperienceIndex] = useState<number | null>(null);
   const [dragOverExperienceIndex, setDragOverExperienceIndex] = useState<number | null>(null);
+  const [draggedSkillId, setDraggedSkillId] = useState<string | null>(null);
+  const [dragOverSkillId, setDragOverSkillId] = useState<string | null>(null);
 
   // State untuk menampung data karya yang sedang dipilih untuk pop-up modal
   const [selectedWork, setSelectedWork] = useState<any>(null);
   const [selectedGalleryImage, setSelectedGalleryImage] = useState<string | null>(null);
   const [gallerySlideIndex, setGallerySlideIndex] = useState(0);
   const galleryTouchStartX = useRef<number | null>(null);
+  const [galleryZoom, setGalleryZoom] = useState(1);
+  const [galleryPan, setGalleryPan] = useState({ x: 0, y: 0 });
+  const galleryPanDragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
+  const [isGalleryPanning, setIsGalleryPanning] = useState(false);
+  const GALLERY_MIN_ZOOM = 1;
+  const GALLERY_MAX_ZOOM = 4;
   const projectFormRef = useRef<HTMLFormElement | null>(null);
   const researchFormRef = useRef<HTMLFormElement | null>(null);
   const [workType, setWorkType] = useState<string | null>(null); // 'project' | 'research'
@@ -212,12 +220,43 @@ export default function App() {
     setGallerySlideIndex(0);
   }, [selectedWork]);
 
-  // Set project page and scroll to top of the Projects section
-  const setProjectPageAndScroll = (newPage: number) => {
+  // Selalu kembali ke fit asli (zoom 1x, tanpa pan) setiap kali pindah slide
+  // atau saat lightbox ditutup, sesuai requirement "default state no zoom".
+  useEffect(() => {
+    setGalleryZoom(1);
+    setGalleryPan({ x: 0, y: 0 });
+  }, [gallerySlideIndex, selectedGalleryImage]);
+
+  // Kunci scroll halaman utama selama lightbox galeri terbuka, supaya
+  // interaksi scroll-to-zoom tidak pernah ikut menggulir halaman di belakangnya.
+  useEffect(() => {
+    if (selectedGalleryImage) {
+      const previousOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = previousOverflow;
+      };
+    }
+  }, [selectedGalleryImage]);
+
+  // Kunci scroll halaman utama selama project/research modal terbuka,
+  // menonaktifkan scroll pada halaman di latar belakang.
+  useEffect(() => {
+    if (selectedWork) {
+      const previousOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = previousOverflow;
+      };
+    }
+  }, [selectedWork]);
+
+  // Set project page only — does NOT scroll the page. Keeps current scroll
+  // position untouched so navigating Next/Previous never jumps the user
+  // back to the top of the Projects section.
+  const setProjectPage = (newPage: number) => {
     const clamped = Math.max(1, Math.min(newPage, totalProjectPages || 1));
     setCurrentPage(clamped);
-    // ensure scroll happens after state update / layout
-    setTimeout(() => scrollToPortfolioSection('projects', 'works'), 80);
   };
 
   // Animate intro text when initial spinner finishes
@@ -310,7 +349,7 @@ export default function App() {
   }, [isAppInitializing, isDataLoading]);
   
   const sortedProjects = useMemo(() => {
-    return [...projects].sort((a, b) => {
+    return [...projects].filter((p) => !p.isArchived).sort((a, b) => {
       const titleA = (a.title || '').toLowerCase();
       const titleB = (b.title || '').toLowerCase();
       return projectSortOrder === 'asc'
@@ -328,15 +367,69 @@ export default function App() {
     return Math.max(1, Math.ceil(sortedProjects.length / ITEMS_PER_PAGE));
   }, [sortedProjects]);
 
-  const paginatedResearch = useMemo(() => {
-    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    return research.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-  }, [research, currentPage]);
+  const sortedSkills = useMemo(() => {
+    return [...skills].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  }, [skills]);
 
-  const totalResearchPages = useMemo(() => {
-    return Math.max(1, Math.ceil(research.length / ITEMS_PER_PAGE));
+  const activeResearch = useMemo(() => {
+    return research.filter((r) => !r.isArchived);
   }, [research]);
 
+  const paginatedResearch = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return activeResearch.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [activeResearch, currentPage]);
+
+  const totalResearchPages = useMemo(() => {
+    return Math.max(1, Math.ceil(activeResearch.length / ITEMS_PER_PAGE));
+  }, [activeResearch]);
+
+  // Navigasi Next/Previous di dalam modal: hanya menukar selectedWork,
+  // TIDAK memanggil scrollIntoView atau mengubah currentPage, sehingga
+  // posisi scroll halaman di belakang modal tetap diam di tempat.
+  const goToAdjacentWork = (direction: 1 | -1) => {
+    const list = workType === 'project' ? sortedProjects : activeResearch;
+    if (!selectedWork || list.length === 0) return;
+    const currentIndex = list.findIndex((w) => w.id === selectedWork.id);
+    if (currentIndex === -1) return;
+    const nextIndex = (currentIndex + direction + list.length) % list.length;
+    setSelectedWork(list[nextIndex]);
+  };
+
+  // --- Gallery zoom helpers ---
+  const clampGalleryZoom = (value: number) => Math.min(GALLERY_MAX_ZOOM, Math.max(GALLERY_MIN_ZOOM, value));
+
+  const zoomGalleryBy = (delta: number) => {
+    setGalleryZoom((prev) => {
+      const next = clampGalleryZoom(prev + delta);
+      if (next === GALLERY_MIN_ZOOM) setGalleryPan({ x: 0, y: 0 });
+      return next;
+    });
+  };
+
+  const handleGalleryWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const delta = e.deltaY > 0 ? -0.25 : 0.25;
+    zoomGalleryBy(delta);
+  };
+
+  const handleGalleryPanStart = (clientX: number, clientY: number) => {
+    if (galleryZoom <= GALLERY_MIN_ZOOM) return;
+    galleryPanDragRef.current = { startX: clientX, startY: clientY, panX: galleryPan.x, panY: galleryPan.y };
+    setIsGalleryPanning(true);
+  };
+
+  const handleGalleryPanMove = (clientX: number, clientY: number) => {
+    if (!galleryPanDragRef.current) return;
+    const { startX, startY, panX, panY } = galleryPanDragRef.current;
+    setGalleryPan({ x: panX + (clientX - startX), y: panY + (clientY - startY) });
+  };
+
+  const handleGalleryPanEnd = () => {
+    galleryPanDragRef.current = null;
+    setIsGalleryPanning(false);
+  };
 
   const triggerToast = (message: string, type = "success") => {
     setToast({ message, type });
@@ -691,14 +784,14 @@ export default function App() {
       if (isLive && db) {
         try {
           await handleUpdateExperience(editingExperienceId, updatedData);
-          triggerToast("Work experience updated successfully!", "success");
+          triggerToast("Experience updated successfully!", "success");
         } catch (e: any) {
           console.error("Failed to update experience:", e);
           triggerToast(`Failed to update experience. ${e?.message || "Please try again."}`, "error");
         }
       } else {
         setExperience(experience.map((exp) => exp.id === editingExperienceId ? { ...exp, ...updatedData } : exp));
-        triggerToast("Work experience updated locally!", "success");
+        triggerToast("Experience updated locally!", "success");
       }
       setEditingExperienceId(null);
       setNewExperience({ company: "", role: "", duration: "", description: "" });
@@ -710,13 +803,13 @@ export default function App() {
     if (isLive && db) {
       try {
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'experience'), { ...newExperience, order: newOrder });
-        triggerToast("Work experience successfully added to cloud!", "success");
+        triggerToast("Experience successfully added to cloud!", "success");
       } catch (e) {
-        triggerToast("Failed to upload work experience.", "error");
+        triggerToast("Failed to upload experience.", "error");
       }
     } else {
       setExperience([...experience, item]);
-      triggerToast("Work experience added locally!", "success");
+      triggerToast("Experience added locally!", "success");
     }
     setNewExperience({ company: "", role: "", duration: "", description: "" });
   };
@@ -725,13 +818,13 @@ export default function App() {
     if (isLive && db) {
       try {
         await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'experience', id));
-        triggerToast("Work experience successfully deleted!", "success");
+        triggerToast("Experience successfully deleted!", "success");
       } catch (e) {
-        triggerToast("Failed to delete work experience.", "error");
+        triggerToast("Failed to delete experience.", "error");
       }
     } else {
       setExperience(experience.filter(x => x.id !== id));
-      triggerToast("Local work experience deleted!", "info");
+      triggerToast("Local experience deleted!", "info");
     }
   };
 
@@ -818,6 +911,36 @@ export default function App() {
     await setDoc(ref, updatedData, { merge: true });
   };
 
+  const toggleArchiveProject = async (project: any) => {
+    const nextArchived = !project.isArchived;
+    if (isLive && db) {
+      try {
+        await handleUpdateProject(project.id, { isArchived: nextArchived });
+        triggerToast(nextArchived ? "Project archived." : "Project restored to active.", "success");
+      } catch (e: any) {
+        triggerToast(`Failed to update archive status. ${e?.message || "Please try again."}`, "error");
+      }
+    } else {
+      setProjects(projects.map((p) => p.id === project.id ? { ...p, isArchived: nextArchived } : p));
+      triggerToast(nextArchived ? "Project archived locally." : "Project restored locally.", "success");
+    }
+  };
+
+  const toggleArchiveResearch = async (item: any) => {
+    const nextArchived = !item.isArchived;
+    if (isLive && db) {
+      try {
+        await handleUpdateResearch(item.id, { isArchived: nextArchived });
+        triggerToast(nextArchived ? "Research archived." : "Research restored to active.", "success");
+      } catch (e: any) {
+        triggerToast(`Failed to update archive status. ${e?.message || "Please try again."}`, "error");
+      }
+    } else {
+      setResearch(research.map((r) => r.id === item.id ? { ...r, isArchived: nextArchived } : r));
+      triggerToast(nextArchived ? "Research archived locally." : "Research restored locally.", "success");
+    }
+  };
+
   const handleUpdateExperience = async (id: string, updatedData: any) => {
     if (!db) {
       throw new Error("Firestore database is not available.");
@@ -826,7 +949,7 @@ export default function App() {
     await setDoc(ref, updatedData, { merge: true });
   };
 
-  // Menyusun ulang urutan Work Experience setelah drag-and-drop.
+  // Menyusun ulang urutan Experience setelah drag-and-drop.
   // Menerima array experience yang sudah dalam urutan baru, lalu
   // memperbarui field `order` pada tiap item secara lokal & ke Firestore.
   const handleReorderExperience = async (reorderedList: any[]) => {
@@ -960,14 +1083,15 @@ export default function App() {
         triggerToast("Skill updated locally!", "success");
       }
       setEditingSkillId(null);
-      setNewSkill({ name: "", category: "Data Analyst" });
+      setNewSkill({ name: "", category: "Technical Stack" });
       return;
     }
 
-    const item = { ...newSkill, id: "sk-" + Date.now() };
+    const item = { ...newSkill, id: "sk-" + Date.now(), order: skills.length};
     if (isLive && db) {
       try {
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'skills'), newSkill);
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'skills'), {...newSkill, 
+                   order: skills.length});
         triggerToast("Skill added to cloud successfully!", "success");
       } catch (e) {
         triggerToast("Failed to upload skill.", "error");
@@ -976,7 +1100,7 @@ export default function App() {
       setSkills([...skills, item]);
       triggerToast("Skill added locally!", "success");
     }
-    setNewSkill({ name: "", category: "Data Analyst" });
+    setNewSkill({ name: "", category: "Technical Stack" });
   };
 
   const handleDeleteSkill = async (id: string) => {
@@ -990,6 +1114,40 @@ export default function App() {
     } else {
       setSkills(skills.filter(x => x.id !== id));
       triggerToast("Skill deleted locally!", "info");
+    }
+  };
+
+  // Menyusun ulang urutan Skills setelah drag-and-drop
+  const handleReorderSkills = async (reorderedList: any[]) => {
+    const withNewOrder = reorderedList.map((item, idx) => ({
+      ...item,
+      order: idx,
+    }));
+
+    setSkills(withNewOrder);
+
+    if (isLive && db) {
+      try {
+        const batch = writeBatch(db);
+
+        withNewOrder.forEach((item) => {
+          const ref = doc(
+            db,
+            'artifacts',
+            appId,
+            'public',
+            'data',
+            'skills',
+            item.id
+          );
+          batch.update(ref, { order: item.order });
+        });
+
+        await batch.commit();
+      } catch (e) {
+        console.error("Failed to save new skills order:", e);
+        triggerToast("Failed to save new order. Please try again.", "error");
+      }
     }
   };
 
@@ -1037,7 +1195,7 @@ export default function App() {
                 {[
                   { id: 'about', label: 'About Me', section: 'hero' },
                   { id: 'projects', label: 'Projects', section: 'works' },
-                  { id: 'work', label: 'Work', section: 'experience' },
+                  { id: 'work', label: 'Experience', section: 'experience' },
                   { id: 'skills', label: 'Skills', section: 'skills' },
                   { id: 'education', label: 'Education', section: 'education' },
                 ].map((item) => (
@@ -1192,6 +1350,9 @@ export default function App() {
                     rel="noreferrer"
                     className="border border-zinc-200 hover:bg-zinc-50 text-zinc-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-all flex items-center gap-2"
                   >
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 110-4.124 2.062 2.062 0 010 4.124zM7.114 20.452H3.56V9h3.554v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+                    </svg>
                     LinkedIn
                   </a>
                 )}
@@ -1202,6 +1363,9 @@ export default function App() {
                     rel="noreferrer"
                     className="border border-zinc-200 hover:bg-zinc-50 text-zinc-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-all flex items-center gap-2"
                   >
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                      <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482C19.138 20.197 22 16.44 22 12.017 22 6.484 17.522 2 12 2z" />
+                    </svg>
                     GitHub
                   </a>
                 )}
@@ -1210,6 +1374,9 @@ export default function App() {
                     href={`mailto:${profile.email}`}
                     className="border border-zinc-200 hover:bg-zinc-50 text-zinc-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-all flex items-center gap-2"
                   >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
                     Send Email
                   </a>
                 )}
@@ -1314,17 +1481,17 @@ export default function App() {
                     <p className="mt-2 text-xs text-zinc-400">Add your first project in the CMS to display it here.</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div key={currentPage} className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-fade-in">
                     {paginatedProjects.map((project, index) => (
                       <div
                         key={project.id || index}
                         onMouseEnter={() => setHoveredWorkId(project.id)}
                         onMouseLeave={() => setHoveredWorkId(null)}
                         onClick={() => { setSelectedWork(project); setWorkType('project'); }}
-                        className={`group bg-white border border-zinc-200/80 hover:border-zinc-300 rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-lg flex flex-col h-full cursor-pointer ${hoveredWorkId === project.id ? 'scale-[1.01] shadow-2xl' : ''}`}
+                        className={`group bg-white border border-zinc-200/80 hover:border-zinc-300 rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-lg flex flex-col min-h-[500px] cursor-pointer ${hoveredWorkId === project.id ? 'scale-[1.01] shadow-2xl' : ''}`}
                       >
-                        {/* Project Image */}
-                        <div className="relative h-48 md:h-56 w-full overflow-hidden bg-zinc-50">
+                        {/* Project Image — rasio 16:9 konsisten di semua kartu */}
+                        <div className="relative aspect-video w-full overflow-hidden bg-zinc-50 shrink-0">
                           <img
                             src={project.imageUrl || "https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=600&q=80"}
                             alt={project.title}
@@ -1337,9 +1504,9 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="p-6 flex-1 flex flex-col justify-between space-y-6">
+                        <div className="p-6 flex-1 flex flex-col space-y-4">
                           <div className="space-y-3">
-                            <h3 className="text-xl font-bold text-zinc-900 group-hover:text-zinc-950 transition-colors">
+                            <h3 className="text-xl font-bold text-zinc-900 group-hover:text-zinc-950 transition-colors line-clamp-2">
                               {project.title}
                             </h3>
                             <p className="text-zinc-500 text-sm leading-relaxed line-clamp-3">
@@ -1347,10 +1514,10 @@ export default function App() {
                             </p>
                           </div>
 
-                          <div className="space-y-4 pt-2">
+                          <div className="space-y-3 mt-auto pt-2">
                             {project.tech_stack && (
                               <div className="flex flex-wrap gap-1.5">
-                                {project.tech_stack.split(',').map((tech, i) => (
+                                {project.tech_stack.split(',').slice(0, 3).map((tech, i) => (
                                   <span
                                     key={i}
                                     className="inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded-md bg-zinc-50 text-zinc-700 border border-zinc-100"
@@ -1358,6 +1525,11 @@ export default function App() {
                                     {tech.trim()}
                                   </span>
                                 ))}
+                                {project.tech_stack.split(',').length > 3 && (
+                                  <span className="inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded-md bg-zinc-100 text-zinc-500">
+                                    +{project.tech_stack.split(',').length - 3} more
+                                  </span>
+                                )}
                               </div>
                             )}
 
@@ -1419,7 +1591,7 @@ export default function App() {
                 {paginatedProjects.length > 0 && totalProjectPages > 1 && (
                   <div className="flex items-center justify-center gap-4 pt-4">
                     <button
-                      onClick={() => setProjectPageAndScroll(Math.max(currentPage - 1, 1))}
+                      onClick={() => setProjectPage(Math.max(currentPage - 1, 1))}
                       disabled={currentPage === 1}
                       className="px-4 py-2 text-xs font-bold bg-zinc-100 hover:bg-zinc-200 text-zinc-800 disabled:opacity-40 rounded-lg transition-all"
                     >
@@ -1429,7 +1601,7 @@ export default function App() {
                       Page {currentPage} of {totalProjectPages}
                     </span>
                     <button
-                      onClick={() => setProjectPageAndScroll(Math.min(currentPage + 1, totalProjectPages))}
+                      onClick={() => setProjectPage(Math.min(currentPage + 1, totalProjectPages))}
                       disabled={currentPage === totalProjectPages}
                       className="px-4 py-2 text-xs font-bold bg-zinc-900 hover:bg-zinc-800 text-white disabled:opacity-40 rounded-lg transition-all"
                     >
@@ -1449,17 +1621,17 @@ export default function App() {
                     <p className="mt-2 text-xs text-zinc-400">Add research cases from the CMS to populate this section.</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div key={currentPage} className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-fade-in">
                     {paginatedResearch.map((item, index) => (
                       <div
                         key={item.id || index}
                         onMouseEnter={() => setHoveredWorkId(item.id)}
                         onMouseLeave={() => setHoveredWorkId(null)}
                         onClick={() => { setSelectedWork(item); setWorkType('research'); }}
-                        className={`group bg-white border border-zinc-200/80 hover:border-zinc-300 rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-lg flex flex-col h-full cursor-pointer ${hoveredWorkId === item.id ? 'scale-[1.01] shadow-2xl' : ''}`}
+                        className={`group bg-white border border-zinc-200/80 hover:border-zinc-300 rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-lg flex flex-col min-h-[500px] cursor-pointer ${hoveredWorkId === item.id ? 'scale-[1.01] shadow-2xl' : ''}`}
                       >
-                        {/* Research Image (Kewajiban) */}
-                        <div className="relative h-48 md:h-56 w-full overflow-hidden bg-zinc-50">
+                        {/* Research Image (Kewajiban) — rasio 16:9 konsisten */}
+                        <div className="relative aspect-video w-full overflow-hidden bg-zinc-50 shrink-0">
                           <img
                             src={item.imageUrl || "https://images.unsplash.com/photo-1518152006812-edab29b069ac?auto=format&fit=crop&w=600&q=80"}
                             alt={item.title}
@@ -1472,18 +1644,18 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="p-6 flex-1 flex flex-col justify-between">
+                        <div className="p-6 flex-1 flex flex-col">
                           <div className="space-y-3">
-                            <h3 className="text-xl font-bold text-zinc-900 group-hover:text-indigo-950 transition-colors">
+                            <h3 className="text-xl font-bold text-zinc-900 group-hover:text-indigo-950 transition-colors line-clamp-2">
                               {item.title}
                             </h3>
-                            <p className="text-zinc-500 text-sm leading-relaxed">
+                            <p className="text-zinc-500 text-sm leading-relaxed line-clamp-3">
                               {item.description}
                             </p>
                           </div>
 
                           {/* Info Tambahan sebagai pengganti Tombol Tautan */}
-                          <div className="mt-6 pt-4 border-t border-zinc-100 flex items-center justify-between text-xs text-zinc-400">
+                          <div className="mt-auto pt-4 border-t border-zinc-100 flex items-center justify-between text-xs text-zinc-400">
                             <span className="flex items-center gap-1">
                               📂 Open Publication
                             </span>
@@ -1521,7 +1693,7 @@ export default function App() {
             )}
           </section>
 
-          {/* Bagian 2: Pengalaman Kerja */}
+          {/* Bagian 2: Pengalaman */}
           <section data-animate-section="experience" className={`${sectionMotionClass('experience')} scroll-mt-28 md:scroll-mt-32 space-y-8`}>
             <div className="flex items-center gap-3">
               <div className="p-1.5 rounded-lg bg-zinc-100 text-zinc-800">
@@ -1529,13 +1701,13 @@ export default function App() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
               </div>
-              <h2 className="text-2xl font-extrabold text-zinc-900 tracking-tight">Work Experience</h2>
+              <h2 className="text-2xl font-extrabold text-zinc-900 tracking-tight">Experience</h2>
             </div>
 
             <div className="relative border-l-2 border-zinc-150 pl-6 space-y-12 ml-4">
               {experience.length === 0 ? (
                 <div className="rounded-3xl border border-dashed border-zinc-200 bg-zinc-50 p-10 text-center text-zinc-500">
-                  <p className="text-sm font-medium">Work experience data is not available.</p>
+                  <p className="text-sm font-medium">Experience data is not available.</p>
                   <p className="mt-2 text-xs text-zinc-400">Update the CMS to show your career history here.</p>
                 </div>
               ) : (
@@ -1575,12 +1747,12 @@ export default function App() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               </div>
-              <h2 className="text-2xl font-extrabold text-zinc-900 tracking-tight">Skills & Technologies</h2>
+              <h2 className="text-2xl font-extrabold text-zinc-900 tracking-tight">Skills</h2>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {['Data Analyst', 'Data Visualization', 'Data Science'].map((category) => {
-                const filtered = skills.filter(s => s.category?.toLowerCase() === category.toLowerCase());
+              {['Technical Stack', 'Data Analyst & Visualization', 'Machine Learning & AI'].map((category) => {
+                const filtered = sortedSkills.filter(s => s.category?.toLowerCase() === category.toLowerCase());
                 return (
                   <div
                     key={category}
@@ -2165,50 +2337,113 @@ export default function App() {
                         </div>
                       </form>
 
-                      {/* List Proyek yang Aktif */}
+                      {/* List Proyek: Aktif & Diarsipkan */}
                       <div className="space-y-3">
                         <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Active Projects</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {projects.map(proj => (
-                            <div key={proj.id} className="p-4 border border-zinc-150 rounded-xl bg-white flex flex-col justify-between">
-                              <div className="space-y-2">
-                                <div className="flex justify-between items-start gap-4">
-                                  <div className="flex items-center gap-3">
-                                    {proj.imageUrl && (
-                                      <img src={proj.imageUrl} className="w-10 h-10 object-cover rounded-lg border" alt="preview" />
-                                    )}
-                                    <h4 className="font-bold text-zinc-900 text-sm leading-tight">{proj.title}</h4>
+                        {projects.filter(p => !p.isArchived).length === 0 ? (
+                          <p className="text-xs text-zinc-400 italic">No active projects.</p>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {projects.filter(p => !p.isArchived).map(proj => (
+                              <div key={proj.id} className="p-4 border border-zinc-150 rounded-xl bg-white flex flex-col justify-between">
+                                <div className="space-y-2">
+                                  <div className="flex justify-between items-start gap-4">
+                                    <div className="flex items-center gap-3">
+                                      {proj.imageUrl && (
+                                        <img src={proj.imageUrl} className="w-10 h-10 object-cover rounded-lg border" alt="preview" />
+                                      )}
+                                      <h4 className="font-bold text-zinc-900 text-sm leading-tight">{proj.title}</h4>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => startEditProject(proj)}
+                                        className="p-2 rounded-full text-zinc-700 hover:bg-zinc-100 transition-colors"
+                                        title="Edit Project"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536M9 11l6 6L21 9l-6-6-6 6z" />
+                                        </svg>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleArchiveProject(proj)}
+                                        className="p-2 rounded-full text-amber-600 hover:bg-amber-50 transition-colors"
+                                        title="Archive Project"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h14M5 8a2 2 0 01-2-2V5a1 1 0 011-1h16a1 1 0 011 1v1a2 2 0 01-2 2M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8M10 12h4" />
+                                        </svg>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteProject(proj.id)}
+                                        className="p-2 rounded-full text-red-500 hover:bg-red-50 transition-colors"
+                                        title="Delete Project"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                      </button>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => startEditProject(proj)}
-                                      className="p-2 rounded-full text-zinc-700 hover:bg-zinc-100 transition-colors"
-                                      title="Edit Project"
-                                    >
-                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536M9 11l6 6L21 9l-6-6-6 6z" />
-                                      </svg>
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteProject(proj.id)}
-                                      className="p-2 rounded-full text-red-500 hover:bg-red-50 transition-colors"
-                                      title="Delete Project"
-                                    >
-                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                      </svg>
-                                    </button>
-                                  </div>
+                                  <p className="text-zinc-500 text-xs line-clamp-2">{proj.description}</p>
                                 </div>
-                                <p className="text-zinc-500 text-xs line-clamp-2">{proj.description}</p>
                               </div>
-                            </div>
-                          ))}
-                        </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-3">
+                        <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Archived Projects</h3>
+                        <p className="text-[11px] text-zinc-400">Archived projects are hidden from the public portfolio but remain stored here. Restore anytime.</p>
+                        {projects.filter(p => p.isArchived).length === 0 ? (
+                          <p className="text-xs text-zinc-400 italic">No archived projects.</p>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {projects.filter(p => p.isArchived).map(proj => (
+                              <div key={proj.id} className="p-4 border border-dashed border-zinc-200 rounded-xl bg-zinc-50/70 flex flex-col justify-between opacity-80">
+                                <div className="space-y-2">
+                                  <div className="flex justify-between items-start gap-4">
+                                    <div className="flex items-center gap-3">
+                                      {proj.imageUrl && (
+                                        <img src={proj.imageUrl} className="w-10 h-10 object-cover rounded-lg border grayscale" alt="preview" />
+                                      )}
+                                      <h4 className="font-bold text-zinc-600 text-sm leading-tight">{proj.title}</h4>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleArchiveProject(proj)}
+                                        className="p-2 rounded-full text-emerald-600 hover:bg-emerald-50 transition-colors"
+                                        title="Restore Project"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v6h6M20 20v-6h-6M5.6 14a8 8 0 1014.4-4M5.6 14H4m14.4-4H20" />
+                                        </svg>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteProject(proj.id)}
+                                        className="p-2 rounded-full text-red-500 hover:bg-red-50 transition-colors"
+                                        title="Delete Project"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <p className="text-zinc-400 text-xs line-clamp-2">{proj.description}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
+
                   )}
 
                   {/* KONTEN KELOLA RISET */}
@@ -2299,48 +2534,110 @@ export default function App() {
                         </div>
                       </form>
 
-                      {/* List Riset yang Aktif */}
+                      {/* List Riset: Aktif & Diarsipkan */}
                       <div className="space-y-3">
                         <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Active Research Papers</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {research.map(res => (
-                            <div key={res.id} className="p-4 border border-zinc-150 rounded-xl bg-white flex flex-col justify-between">
-                              <div className="space-y-2">
-                                <div className="flex justify-between items-start gap-4">
-                                  <div className="flex items-center gap-3">
-                                    {res.imageUrl && (
-                                      <img src={res.imageUrl} className="w-10 h-10 object-cover rounded-lg border" alt="research preview" />
-                                    )}
-                                    <h4 className="font-bold text-zinc-900 text-sm leading-tight">{res.title}</h4>
+                        {research.filter(r => !r.isArchived).length === 0 ? (
+                          <p className="text-xs text-zinc-400 italic">No active research items.</p>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {research.filter(r => !r.isArchived).map(res => (
+                              <div key={res.id} className="p-4 border border-zinc-150 rounded-xl bg-white flex flex-col justify-between">
+                                <div className="space-y-2">
+                                  <div className="flex justify-between items-start gap-4">
+                                    <div className="flex items-center gap-3">
+                                      {res.imageUrl && (
+                                        <img src={res.imageUrl} className="w-10 h-10 object-cover rounded-lg border" alt="research preview" />
+                                      )}
+                                      <h4 className="font-bold text-zinc-900 text-sm leading-tight">{res.title}</h4>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => startEditResearch(res)}
+                                        className="p-2 rounded-full text-zinc-700 hover:bg-zinc-100 transition-colors"
+                                        title="Edit Research"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536M9 11l6 6L21 9l-6-6-6 6z" />
+                                        </svg>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleArchiveResearch(res)}
+                                        className="p-2 rounded-full text-amber-600 hover:bg-amber-50 transition-colors"
+                                        title="Archive Research"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h14M5 8a2 2 0 01-2-2V5a1 1 0 011-1h16a1 1 0 011 1v1a2 2 0 01-2 2M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8M10 12h4" />
+                                        </svg>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteResearch(res.id)}
+                                        className="p-2 rounded-full text-red-500 hover:bg-red-50 transition-colors"
+                                        title="Delete Research"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                      </button>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => startEditResearch(res)}
-                                      className="p-2 rounded-full text-zinc-700 hover:bg-zinc-100 transition-colors"
-                                      title="Edit Research"
-                                    >
-                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536M9 11l6 6L21 9l-6-6-6 6z" />
-                                      </svg>
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteResearch(res.id)}
-                                      className="p-2 rounded-full text-red-500 hover:bg-red-50 transition-colors"
-                                      title="Delete Research"
-                                    >
-                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                      </svg>
-                                    </button>
-                                  </div>
+                                  <p className="text-zinc-500 text-xs line-clamp-2">{res.description}</p>
                                 </div>
-                                <p className="text-zinc-500 text-xs line-clamp-2">{res.description}</p>
                               </div>
-                            </div>
-                          ))}
-                        </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-3">
+                        <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Archived Research Papers</h3>
+                        <p className="text-[11px] text-zinc-400">Archived research is hidden from the public portfolio but remains stored here. Restore anytime.</p>
+                        {research.filter(r => r.isArchived).length === 0 ? (
+                          <p className="text-xs text-zinc-400 italic">No archived research items.</p>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {research.filter(r => r.isArchived).map(res => (
+                              <div key={res.id} className="p-4 border border-dashed border-zinc-200 rounded-xl bg-zinc-50/70 flex flex-col justify-between opacity-80">
+                                <div className="space-y-2">
+                                  <div className="flex justify-between items-start gap-4">
+                                    <div className="flex items-center gap-3">
+                                      {res.imageUrl && (
+                                        <img src={res.imageUrl} className="w-10 h-10 object-cover rounded-lg border grayscale" alt="research preview" />
+                                      )}
+                                      <h4 className="font-bold text-zinc-600 text-sm leading-tight">{res.title}</h4>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleArchiveResearch(res)}
+                                        className="p-2 rounded-full text-emerald-600 hover:bg-emerald-50 transition-colors"
+                                        title="Restore Research"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v6h6M20 20v-6h-6M5.6 14a8 8 0 1014.4-4M5.6 14H4m14.4-4H20" />
+                                        </svg>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteResearch(res.id)}
+                                        className="p-2 rounded-full text-red-500 hover:bg-red-50 transition-colors"
+                                        title="Delete Research"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <p className="text-zinc-400 text-xs line-clamp-2">{res.description}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -2348,7 +2645,7 @@ export default function App() {
                 </div>
               )}
 
-              {/* TAB CMS 3: PENGALAMAN KERJA */}
+              {/* TAB CMS 3: PENGALAMAN */}
               {cmsTab === "experience" && (
                 <div className="space-y-8">
                   <div>
@@ -2509,7 +2806,7 @@ export default function App() {
                 <div className="space-y-8">
                   <div>
                     <h2 className="text-lg font-bold text-zinc-900">Manage Skill Matrix</h2>
-                    <p className="text-xs text-zinc-400">Classify your abilities into data analyst, data visualization, or tools categories.</p>
+                    <p className="text-xs text-zinc-400">Classify your abilities into technical stack, data analyst & visualization, or ML/AI categories.</p>
                   </div>
 
                   <form onSubmit={handleSaveSkill} className="p-4 border border-zinc-150 rounded-xl bg-zinc-50 grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-4 items-end">
@@ -2535,9 +2832,9 @@ export default function App() {
                         onChange={(e) => setNewSkill({ ...newSkill, category: e.target.value })}
                         className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
                       >
-                        <option value="Data Analyst">Data Analyst</option>
-                        <option value="Data Visualization">Data Visualization</option>
-                        <option value="Data Science">Data Science</option>
+                        <option value="Technical Stack">Technical Stack</option>
+                        <option value="Data Analyst & Visualization">Data Analyst & Visualization</option>
+                        <option value="Machine Learning & AI">Machine Learning & AI</option>
                       </select>
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
@@ -2552,7 +2849,7 @@ export default function App() {
                           type="button"
                           onClick={() => {
                             setEditingSkillId(null);
-                            setNewSkill({ name: "", category: "Data Analyst" });
+                            setNewSkill({ name: "", category: "Technical Stack" });
                           }}
                           className="text-zinc-700 bg-zinc-100 hover:bg-zinc-200 text-xs font-semibold uppercase px-4 py-2.5 rounded-lg transition-colors"
                         >
@@ -2563,21 +2860,58 @@ export default function App() {
                   </form>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {['Data Analyst', 'Data Visualization', 'Data Science'].map(category => {
-                      const filtered = skills.filter(s => s.category?.toLowerCase() === category.toLowerCase());
+                    <p className="md:col-span-3 text-[11px] text-zinc-400">Drag the handle (⠿) to reorder skills within the matrix. The new order is saved automatically.</p>
+                    {['Technical Stack', 'Data Analyst & Visualization', 'Machine Learning & AI'].map(category => {
+                      const filtered = sortedSkills.filter(s => s.category?.toLowerCase() === category.toLowerCase());
                       return (
                         <div key={category} className="p-4 border border-zinc-150 rounded-xl bg-zinc-50/50 space-y-3">
                           <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">{category}</h4>
                           <div className="flex flex-col gap-1.5">
                             {filtered.map(item => (
-                              <div key={item.id} className="bg-white px-3 py-1.5 rounded-lg border border-zinc-200 flex items-center justify-between shadow-sm gap-2">
-                                <span className="text-xs font-medium text-zinc-800">{item.name}</span>
-                                <div className="flex items-center gap-1">
+                              <div
+                                key={item.id}
+                                draggable
+                                onDragStart={() => setDraggedSkillId(item.id)}
+                                onDragEnter={() => {
+                                  if (draggedSkillId === null || draggedSkillId === item.id) return;
+                                  setDragOverSkillId(item.id);
+                                }}
+                                onDragOver={(e) => e.preventDefault()}
+                                onDragEnd={() => {
+                                  if (draggedSkillId !== null && dragOverSkillId !== null && draggedSkillId !== dragOverSkillId) {
+                                    const reordered = [...sortedSkills];
+                                    const fromIndex = reordered.findIndex((s) => s.id === draggedSkillId);
+                                    const toIndex = reordered.findIndex((s) => s.id === dragOverSkillId);
+                                    if (fromIndex !== -1 && toIndex !== -1) {
+                                      const [moved] = reordered.splice(fromIndex, 1);
+                                      reordered.splice(toIndex, 0, moved);
+                                      handleReorderSkills(reordered);
+                                    }
+                                  }
+                                  setDraggedSkillId(null);
+                                  setDragOverSkillId(null);
+                                }}
+                                className={`bg-white px-3 py-1.5 rounded-lg border border-zinc-200 flex items-center justify-between shadow-sm gap-2 transition-all ${draggedSkillId === item.id ? "opacity-40" : ""} ${dragOverSkillId === item.id && draggedSkillId !== item.id ? "ring-2 ring-zinc-900" : ""}`}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span
+                                    className="cursor-grab active:cursor-grabbing text-zinc-300 hover:text-zinc-500 transition-colors shrink-0"
+                                    title="Drag to reorder"
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                                      <circle cx="9" cy="6" r="1.5" /><circle cx="15" cy="6" r="1.5" />
+                                      <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
+                                      <circle cx="9" cy="18" r="1.5" /><circle cx="15" cy="18" r="1.5" />
+                                    </svg>
+                                  </span>
+                                  <span className="text-xs font-medium text-zinc-800 truncate">{item.name}</span>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
                                   <button
                                     type="button"
                                     onClick={() => {
                                       setEditingSkillId(item.id);
-                                      setNewSkill({ name: item.name || "", category: item.category || "Data Analyst" });
+                                      setNewSkill({ name: item.name || "", category: item.category || "Technical Stack" });
                                     }}
                                     className="p-2 rounded-full text-zinc-700 hover:bg-zinc-100 transition-colors"
                                     title="Edit Skill"
@@ -2743,6 +3077,37 @@ export default function App() {
       {selectedWork && (
         <>
           <div className="fixed inset-0 bg-zinc-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6 animate-fade-in">
+
+            {/* Navigator Proyek/Riset Sebelumnya & Berikutnya — mengambang DI LUAR kartu modal,
+                menempel pada overlay penuh layar, hanya menukar selectedWork (tidak memanggil
+                scrollIntoView), sehingga posisi scroll halaman di belakang modal tidak berubah */}
+            {(workType === 'project' ? sortedProjects : activeResearch).length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => goToAdjacentWork(-1)}
+                  aria-label="Previous project"
+                  title="Previous"
+                  className="fixed left-2 md:left-6 top-1/2 -translate-y-1/2 z-[60] bg-white/90 backdrop-blur-md border border-zinc-200 text-zinc-700 hover:text-zinc-900 hover:bg-white p-3 rounded-full transition-all duration-300 ease-in-out shadow-lg hover:scale-105"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => goToAdjacentWork(1)}
+                  aria-label="Next project"
+                  title="Next"
+                  className="fixed right-2 md:right-6 top-1/2 -translate-y-1/2 z-[60] bg-white/90 backdrop-blur-md border border-zinc-200 text-zinc-700 hover:text-zinc-900 hover:bg-white p-3 rounded-full transition-all duration-300 ease-in-out shadow-lg hover:scale-105"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </>
+            )}
+
             <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] shadow-2xl relative flex flex-col overflow-hidden">
 
             {/* Tombol Tutup Modal — terkunci di pojok kanan atas modal, tidak ikut scroll */}
@@ -2765,13 +3130,16 @@ export default function App() {
                   alt={selectedWork.title}
                   className="w-full h-full object-cover"
                 />
-                {/* Gradient Scrim: gelap pekat di bawah (area teks), memudar transparan ke atas */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
+                {/* Gradient Scrim: pekat tepat di belakang judul, memudar cepat dan transparan total di paruh atas gambar */}
+                <div
+                  className="absolute inset-0 pointer-events-none"
+                  style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.75) 18%, rgba(0,0,0,0.35) 38%, rgba(0,0,0,0) 60%)' }}
+                />
                 <div className="absolute bottom-6 left-6 right-6">
                   <span className={`inline-flex items-center text-[10px] font-bold px-2.5 py-1 rounded-md mb-3 shadow-sm uppercase tracking-wider border border-white/40 ${workType === 'project' ? 'bg-white/10 text-white' : 'bg-indigo-500/80 text-white'}`}>
                     {workType === 'project' ? 'Application Project' : 'Research'}
                   </span>
-                  <h2 className="text-2xl md:text-4xl font-extrabold text-white tracking-tight">{selectedWork.title}</h2>
+                  <h2 className="text-2xl md:text-4xl font-extrabold text-white tracking-tight drop-shadow-sm">{selectedWork.title}</h2>
                 </div>
               </div>
 
@@ -2824,7 +3192,7 @@ export default function App() {
                         <button
                           key={idx}
                           type="button"
-                          onClick={() => setSelectedGalleryImage(imageUrl)}
+                          onClick={() => { setGallerySlideIndex(idx); setSelectedGalleryImage(imageUrl); }}
                           className="overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-100 focus:outline-none focus:ring-2 focus:ring-zinc-500"
                         >
                           <img
@@ -2871,9 +3239,13 @@ export default function App() {
         {selectedGalleryImage && Array.isArray(selectedWork?.gallery) && (
           <div
             className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
-            onTouchStart={(e) => { galleryTouchStartX.current = e.touches[0].clientX; }}
+            onWheel={(e) => e.preventDefault()}
+            onTouchStart={(e) => {
+              if (galleryZoom > GALLERY_MIN_ZOOM) return;
+              galleryTouchStartX.current = e.touches[0].clientX;
+            }}
             onTouchEnd={(e) => {
-              if (galleryTouchStartX.current === null) return;
+              if (galleryZoom > GALLERY_MIN_ZOOM || galleryTouchStartX.current === null) return;
               const deltaX = e.changedTouches[0].clientX - galleryTouchStartX.current;
               const threshold = 40;
               const total = selectedWork.gallery.length;
@@ -2896,8 +3268,8 @@ export default function App() {
               </svg>
             </button>
 
-            {/* Tombol panah navigasi */}
-            {selectedWork.gallery.length > 1 && (
+            {/* Tombol panah navigasi — disembunyikan saat sedang zoom agar tidak bentrok dengan pan */}
+            {selectedWork.gallery.length > 1 && galleryZoom <= GALLERY_MIN_ZOOM && (
               <>
                 <button
                   type="button"
@@ -2922,13 +3294,66 @@ export default function App() {
               </>
             )}
 
-            <div className="max-w-[90vw] max-h-[80vh] overflow-hidden rounded-3xl border border-white/10 shadow-2xl bg-black select-none">
+            <div
+              className={`max-w-[90vw] max-h-[80vh] overflow-hidden rounded-3xl border border-white/10 shadow-2xl bg-black select-none ${galleryZoom > GALLERY_MIN_ZOOM ? (isGalleryPanning ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default'}`}
+              onWheel={handleGalleryWheel}
+              onMouseDown={(e) => { e.stopPropagation(); handleGalleryPanStart(e.clientX, e.clientY); }}
+              onMouseMove={(e) => { if (galleryPanDragRef.current) { e.stopPropagation(); handleGalleryPanMove(e.clientX, e.clientY); } }}
+              onMouseUp={handleGalleryPanEnd}
+              onMouseLeave={handleGalleryPanEnd}
+            >
               <img
                 src={selectedWork.gallery[gallerySlideIndex] || selectedGalleryImage}
                 alt={`Gallery zoom ${gallerySlideIndex + 1}`}
-                className="w-full h-full max-h-[80vh] object-contain transition-opacity duration-300"
+                className={`w-full h-full max-h-[80vh] object-contain transition-transform duration-150 ${isGalleryPanning ? '' : 'ease-out'}`}
+                style={{ transform: `translate(${galleryPan.x}px, ${galleryPan.y}px) scale(${galleryZoom})` }}
+                draggable={false}
                 onError={(e) => { (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=800&q=80'; }}
               />
+            </div>
+
+            {/* Kontrol Zoom In / Zoom Out / Reset */}
+            <div className="absolute bottom-6 right-4 md:right-6 z-50 flex items-center gap-1.5 bg-white/90 rounded-full shadow-lg p-1.5">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); zoomGalleryBy(-0.25); }}
+                disabled={galleryZoom <= GALLERY_MIN_ZOOM}
+                aria-label="Zoom out"
+                title="Zoom out"
+                className="p-2 rounded-full text-zinc-900 hover:bg-zinc-100 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-4.35-4.35M11 8v0M8 11h6M17 11a6 6 0 11-12 0 6 6 0 0112 0z" />
+                </svg>
+              </button>
+              <span className="text-xs font-bold text-zinc-700 w-11 text-center select-none tabular-nums">
+                {Math.round(galleryZoom * 100)}%
+              </span>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); zoomGalleryBy(0.25); }}
+                disabled={galleryZoom >= GALLERY_MAX_ZOOM}
+                aria-label="Zoom in"
+                title="Zoom in"
+                className="p-2 rounded-full text-zinc-900 hover:bg-zinc-100 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 8v6M8 11h6M17 11a6 6 0 11-12 0 6 6 0 0112 0zM21 21l-4.35-4.35" />
+                </svg>
+              </button>
+              {galleryZoom > GALLERY_MIN_ZOOM && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setGalleryZoom(GALLERY_MIN_ZOOM); setGalleryPan({ x: 0, y: 0 }); }}
+                  aria-label="Reset zoom"
+                  title="Reset zoom"
+                  className="p-2 rounded-full text-zinc-900 hover:bg-zinc-100 transition-colors border-l border-zinc-200 ml-0.5 pl-2.5"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v6h6M20 20v-6h-6M5.6 14a8 8 0 1014.4-4M5.6 14H4m14.4-4H20" />
+                  </svg>
+                </button>
+              )}
             </div>
 
             {/* Indikator dots */}
@@ -2948,6 +3373,7 @@ export default function App() {
           </div>
         )}
       </>
+
       )}
 
 
