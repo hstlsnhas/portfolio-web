@@ -69,6 +69,7 @@ export default function App() {
   const [introAnimated, setIntroAnimated] = useState(false);
   const [toast, setToast] = useState<{ message: string, type: string } | null>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginError, setLoginError] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -76,7 +77,6 @@ export default function App() {
 
   const [currentPage, setCurrentPage] = useState(1);
   const [portfolioSectionTab, setPortfolioSectionTab] = useState<"about" | "projects" | "work" | "skills" | "education">("about");
-  const [projectSortOrder, setProjectSortOrder] = useState<"asc" | "desc">("asc");
   const ITEMS_PER_PAGE = 4;
 
   const [newSkill, setNewSkill] = useState({ name: "", category: "Technical Stack" });
@@ -98,7 +98,19 @@ export default function App() {
   const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
   const [editingEducationId, setEditingEducationId] = useState<string | null>(null);
   const [editingResearchId, setEditingResearchId] = useState<string | null>(null);
-  const [newResearch, setNewResearch] = useState({ title: "", description: "", imageUrl: "" });
+  const [newResearch, setNewResearch] = useState({ title: "", description: "", imageUrl: "", gallery: [] as string[] });
+  const [newResearchGalleryUrl, setNewResearchGalleryUrl] = useState("");
+
+  const addResearchGalleryImage = () => {
+    const value = newResearchGalleryUrl.trim();
+    if (!value) return;
+    setNewResearch((prev) => ({
+      ...prev,
+      gallery: [...(Array.isArray(prev.gallery) ? prev.gallery : []), value],
+    }));
+    setNewResearchGalleryUrl("");
+    triggerToast("Gallery image added.", "success");
+  };
   const [newExperience, setNewExperience] = useState({ company: "", role: "", duration: "", description: "" });
   const [newEducation, setNewEducation] = useState({ school: "", degree: "", year: "", description: "" });
 
@@ -133,6 +145,10 @@ export default function App() {
   const [dragOverExperienceIndex, setDragOverExperienceIndex] = useState<number | null>(null);
   const [draggedSkillId, setDraggedSkillId] = useState<string | null>(null);
   const [dragOverSkillId, setDragOverSkillId] = useState<string | null>(null);
+  const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null);
+  const [dragOverProjectId, setDragOverProjectId] = useState<string | null>(null);
+  const [draggedResearchId, setDraggedResearchId] = useState<string | null>(null);
+  const [dragOverResearchId, setDragOverResearchId] = useState<string | null>(null);
 
   // State untuk menampung data karya yang sedang dipilih untuk pop-up modal
   const [selectedWork, setSelectedWork] = useState<any>(null);
@@ -143,10 +159,61 @@ export default function App() {
   const [galleryPan, setGalleryPan] = useState({ x: 0, y: 0 });
   const galleryPanDragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
   const [isGalleryPanning, setIsGalleryPanning] = useState(false);
+  // Mouse drag (desktop/trackpad) swipe state for the gallery lightbox
+  const galleryMouseDragStartX = useRef<number | null>(null);
+  const galleryMouseDragCurrentX = useRef<number>(0);
+  const galleryMouseIsDown = useRef(false);
+  const [galleryMouseDragOffset, setGalleryMouseDragOffset] = useState(0);
+  const [galleryIsDraggingSwiping, setGalleryIsDraggingSwiping] = useState(false);
+  const GALLERY_SWIPE_THRESHOLD = 60;
   const GALLERY_MIN_ZOOM = 1;
   const GALLERY_MAX_ZOOM = 4;
+
+  // ── Auto-hide navigation controls ──────────────────────────────────────────
+  // Both the work modal and the gallery lightbox share the same pattern:
+  // controls are fully visible on open, fade to a dim state after AUTO_HIDE_DELAY
+  // ms of inactivity, and snap back to full opacity on any interaction.
+  const AUTO_HIDE_DELAY = 2500; // ms before controls dim
+
+  // Work modal (project / research navigation)
+  const [workNavVisible, setWorkNavVisible] = useState(true);
+  const workNavTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const resetWorkNavTimer = () => {
+    setWorkNavVisible(true);
+    if (workNavTimerRef.current) clearTimeout(workNavTimerRef.current);
+    workNavTimerRef.current = setTimeout(() => setWorkNavVisible(false), AUTO_HIDE_DELAY);
+  };
+
+  // Gallery lightbox (image nav, zoom, dots)
+  const [galleryNavVisible, setGalleryNavVisible] = useState(true);
+  const galleryNavTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const resetGalleryNavTimer = () => {
+    setGalleryNavVisible(true);
+    if (galleryNavTimerRef.current) clearTimeout(galleryNavTimerRef.current);
+    galleryNavTimerRef.current = setTimeout(() => setGalleryNavVisible(false), AUTO_HIDE_DELAY);
+  };
   const projectFormRef = useRef<HTMLFormElement | null>(null);
   const researchFormRef = useRef<HTMLFormElement | null>(null);
+
+  // Deteksi mobile vs desktop untuk perilaku navigasi modal: tombol next/prev
+  // disembunyikan di mobile (swipe jadi metode utama), tapi tetap tampil &
+  // berfungsi penuh di desktop (swipe/drag jadi metode tambahan).
+  const [isMobileViewport, setIsMobileViewport] = useState(
+    typeof window !== 'undefined' ? window.innerWidth < 768 : false
+  );
+
+  // Swipe/drag navigation state untuk modal detail karya (project/research).
+  // Mendukung touch (mobile & tablet) dan mouse drag/trackpad (desktop),
+  // dengan animasi transisi yang halus saat berpindah item.
+  const workModalDragStartX = useRef<number | null>(null);
+  const workModalDragCurrentX = useRef<number>(0);
+  const workModalIsPointerDown = useRef(false);
+  const [workModalDragOffset, setWorkModalDragOffset] = useState(0);
+  const [workModalIsDragging, setWorkModalIsDragging] = useState(false);
+  const [workModalTransitionDirection, setWorkModalTransitionDirection] = useState<1 | -1 | 0>(0);
+  const WORK_MODAL_SWIPE_THRESHOLD = 60;
   const [workType, setWorkType] = useState<string | null>(null); // 'project' | 'research'
 
   const cmsTabs: { id: "profile" | "works" | "experience" | "skills" | "education"; label: string; icon: string }[] = [
@@ -185,6 +252,15 @@ export default function App() {
     setCurrentPage(1);
   }, [portfolioWorksTab]);
 
+  // Pantau lebar viewport untuk menentukan apakah tombol next/prev modal
+  // perlu ditampilkan (desktop) atau disembunyikan demi swipe-only (mobile).
+  useEffect(() => {
+    const handleResize = () => setIsMobileViewport(window.innerWidth < 768);
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const sectionMotionClass = (key: string) => {
     return `transition-all duration-700 ease-out ${visibleSections[key] ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`;
   };
@@ -215,10 +291,50 @@ export default function App() {
     researchFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [editingResearchId]);
 
+  // Reset error & password setiap kali modal login dibuka, supaya pesan
+  // error dari percobaan sebelumnya tidak pernah muncul kembali secara basi.
+  useEffect(() => {
+    if (showLoginModal) {
+      setLoginError("");
+      setLoginPassword("");
+    }
+  }, [showLoginModal]);
+
   // Reset position
   useEffect(() => {
     setGallerySlideIndex(0);
   }, [selectedWork]);
+
+  // Start auto-hide timer for work modal nav when a work item is opened;
+  // clear timer and reset visibility when modal closes.
+  useEffect(() => {
+    if (selectedWork) {
+      setWorkNavVisible(true);
+      workNavTimerRef.current = setTimeout(() => setWorkNavVisible(false), AUTO_HIDE_DELAY);
+    } else {
+      if (workNavTimerRef.current) clearTimeout(workNavTimerRef.current);
+      setWorkNavVisible(true);
+    }
+    return () => { if (workNavTimerRef.current) clearTimeout(workNavTimerRef.current); };
+  }, [selectedWork]);
+
+  // Start auto-hide timer for gallery lightbox nav when the lightbox opens;
+  // clear timer and reset visibility when it closes.
+  useEffect(() => {
+    if (selectedGalleryImage) {
+      setGalleryNavVisible(true);
+      galleryNavTimerRef.current = setTimeout(() => setGalleryNavVisible(false), AUTO_HIDE_DELAY);
+    } else {
+      if (galleryNavTimerRef.current) clearTimeout(galleryNavTimerRef.current);
+      setGalleryNavVisible(true);
+    }
+    return () => { if (galleryNavTimerRef.current) clearTimeout(galleryNavTimerRef.current); };
+  }, [selectedGalleryImage]);
+
+  // Also reset the gallery nav timer whenever the slide changes (e.g. via swipe).
+  useEffect(() => {
+    if (selectedGalleryImage) resetGalleryNavTimer();
+  }, [gallerySlideIndex]);
 
   // Selalu kembali ke fit asli (zoom 1x, tanpa pan) setiap kali pindah slide
   // atau saat lightbox ditutup, sesuai requirement "default state no zoom".
@@ -348,15 +464,15 @@ export default function App() {
     };
   }, [isAppInitializing, isDataLoading]);
   
+  // Manual ordering: projects are sorted by their `order` field (ascending),
+  // controlled from the backend/CMS rather than alphabetically by title.
+  // Items without an explicit order fall back to 0 and keep insertion order
+  // relative to one another (stable sort).
   const sortedProjects = useMemo(() => {
-    return [...projects].filter((p) => !p.isArchived).sort((a, b) => {
-      const titleA = (a.title || '').toLowerCase();
-      const titleB = (b.title || '').toLowerCase();
-      return projectSortOrder === 'asc'
-        ? titleA.localeCompare(titleB)
-        : titleB.localeCompare(titleA);
-    });
-  }, [projects, projectSortOrder]);
+    return [...projects]
+      .filter((p) => !p.isArchived)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  }, [projects]);
 
   const paginatedProjects = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -371,8 +487,11 @@ export default function App() {
     return [...skills].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   }, [skills]);
 
+  // Research items follow the same manual `order` field convention as projects.
   const activeResearch = useMemo(() => {
-    return research.filter((r) => !r.isArchived);
+    return research
+      .filter((r) => !r.isArchived)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   }, [research]);
 
   const paginatedResearch = useMemo(() => {
@@ -387,14 +506,89 @@ export default function App() {
   // Navigasi Next/Previous di dalam modal: hanya menukar selectedWork,
   // TIDAK memanggil scrollIntoView atau mengubah currentPage, sehingga
   // posisi scroll halaman di belakang modal tetap diam di tempat.
+  // `direction` juga dipakai untuk menentukan arah animasi transisi slide.
   const goToAdjacentWork = (direction: 1 | -1) => {
     const list = workType === 'project' ? sortedProjects : activeResearch;
     if (!selectedWork || list.length === 0) return;
     const currentIndex = list.findIndex((w) => w.id === selectedWork.id);
     if (currentIndex === -1) return;
     const nextIndex = (currentIndex + direction + list.length) % list.length;
+    setWorkModalTransitionDirection(direction);
     setSelectedWork(list[nextIndex]);
   };
+
+  // --- Work modal swipe/drag handlers (touch + mouse/trackpad) ---
+  // Bekerja di mobile (touch) maupun desktop (mouse drag), memberikan
+  // metode navigasi tambahan di samping tombol next/prev yang tetap aktif.
+  const workModalPointerDown = (clientX: number) => {
+    workModalIsPointerDown.current = true;
+    workModalDragStartX.current = clientX;
+    workModalDragCurrentX.current = clientX;
+    setWorkModalIsDragging(true);
+    resetWorkNavTimer();
+  };
+
+  const workModalPointerMove = (clientX: number) => {
+    if (!workModalIsPointerDown.current || workModalDragStartX.current === null) return;
+    workModalDragCurrentX.current = clientX;
+    setWorkModalDragOffset(clientX - workModalDragStartX.current);
+    resetWorkNavTimer();
+  };
+
+  const workModalPointerUp = () => {
+    if (!workModalIsPointerDown.current || workModalDragStartX.current === null) {
+      setWorkModalIsDragging(false);
+      setWorkModalDragOffset(0);
+      return;
+    }
+    const deltaX = workModalDragCurrentX.current - workModalDragStartX.current;
+    workModalIsPointerDown.current = false;
+    workModalDragStartX.current = null;
+    setWorkModalIsDragging(false);
+    setWorkModalDragOffset(0);
+    resetWorkNavTimer();
+
+    if (deltaX > WORK_MODAL_SWIPE_THRESHOLD) {
+      goToAdjacentWork(-1); // swipe kanan -> item sebelumnya
+    } else if (deltaX < -WORK_MODAL_SWIPE_THRESHOLD) {
+      goToAdjacentWork(1); // swipe kiri -> item berikutnya
+    }
+  };
+
+  const workModalPointerCancel = () => {
+    workModalIsPointerDown.current = false;
+    workModalDragStartX.current = null;
+    setWorkModalIsDragging(false);
+    setWorkModalDragOffset(0);
+  };
+
+  // Navigasi keyboard untuk modal detail karya: tombol kiri/kanan berpindah
+  // antar item, Escape menutup modal. Aktif di semua perangkat yang punya
+  // keyboard (mobile maupun desktop), sebagai pelengkap aksesibilitas.
+  useEffect(() => {
+    if (!selectedWork) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight') {
+        goToAdjacentWork(1);
+      } else if (e.key === 'ArrowLeft') {
+        goToAdjacentWork(-1);
+      } else if (e.key === 'Escape') {
+        setSelectedWork(null);
+        setWorkType(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedWork, workType, sortedProjects, activeResearch]);
+
+  // Bersihkan arah transisi sesaat setelah animasi slide selesai, supaya
+  // item berikutnya yang dibuka via klik thumbnail tidak ikut "mewarisi"
+  // arah animasi dari navigasi sebelumnya.
+  useEffect(() => {
+    if (workModalTransitionDirection === 0) return;
+    const id = setTimeout(() => setWorkModalTransitionDirection(0), 300);
+    return () => clearTimeout(id);
+  }, [selectedWork, workModalTransitionDirection]);
 
   // --- Gallery zoom helpers ---
   const clampGalleryZoom = (value: number) => Math.min(GALLERY_MAX_ZOOM, Math.max(GALLERY_MIN_ZOOM, value));
@@ -429,6 +623,54 @@ export default function App() {
   const handleGalleryPanEnd = () => {
     galleryPanDragRef.current = null;
     setIsGalleryPanning(false);
+  };
+
+  // --- Gallery lightbox mouse drag/swipe handlers (desktop & trackpad) ---
+  // Mirrors the touch swipe logic but uses mousedown/mousemove/mouseup events.
+  // Only active when zoom is at minimum (no pan conflict).
+  const galleryMouseDown = (clientX: number) => {
+    if (galleryZoom > GALLERY_MIN_ZOOM) return; // hand off to pan handler
+    galleryMouseIsDown.current = true;
+    galleryMouseDragStartX.current = clientX;
+    galleryMouseDragCurrentX.current = clientX;
+    setGalleryIsDraggingSwiping(true);
+    setGalleryMouseDragOffset(0);
+    resetGalleryNavTimer();
+  };
+
+  const galleryMouseMove = (clientX: number) => {
+    if (!galleryMouseIsDown.current || galleryMouseDragStartX.current === null) return;
+    galleryMouseDragCurrentX.current = clientX;
+    setGalleryMouseDragOffset(clientX - galleryMouseDragStartX.current);
+    resetGalleryNavTimer();
+  };
+
+  const galleryMouseUp = () => {
+    if (!galleryMouseIsDown.current || galleryMouseDragStartX.current === null) {
+      setGalleryIsDraggingSwiping(false);
+      setGalleryMouseDragOffset(0);
+      return;
+    }
+    const deltaX = galleryMouseDragCurrentX.current - galleryMouseDragStartX.current;
+    galleryMouseIsDown.current = false;
+    galleryMouseDragStartX.current = null;
+    setGalleryIsDraggingSwiping(false);
+    setGalleryMouseDragOffset(0);
+    resetGalleryNavTimer();
+    if (!selectedWork?.gallery) return;
+    const total = selectedWork.gallery.length;
+    if (deltaX > GALLERY_SWIPE_THRESHOLD) {
+      setGallerySlideIndex((i) => (i - 1 + total) % total);
+    } else if (deltaX < -GALLERY_SWIPE_THRESHOLD) {
+      setGallerySlideIndex((i) => (i + 1) % total);
+    }
+  };
+
+  const galleryMouseCancel = () => {
+    galleryMouseIsDown.current = false;
+    galleryMouseDragStartX.current = null;
+    setGalleryIsDraggingSwiping(false);
+    setGalleryMouseDragOffset(0);
   };
 
   const triggerToast = (message: string, type = "success") => {
@@ -555,6 +797,7 @@ export default function App() {
     const unsubProj = onSnapshot(projColRef, (snap) => {
       const list: any[] = [];
       snap.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
+      list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       setProjects(list);
       markLoaded();
     }, (err) => { console.error("Error Proyek Sync: ", err); markLoaded(); });
@@ -564,6 +807,7 @@ export default function App() {
     const unsubRes = onSnapshot(resColRef, (snap) => {
       const list: any[] = [];
       snap.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
+      list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       setResearch(list);
       markLoaded();
     }, (err) => { console.error("Error Riset Sync: ", err); markLoaded(); });
@@ -585,15 +829,17 @@ export default function App() {
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    setLoginError("");
     setIsAuthenticating(true);
     setTimeout(() => {
       if (loginPassword.trim().toLowerCase() === "katya123") {
         setIsAdmin(true);
         setShowLoginModal(false);
+        setLoginError("");
         setActiveTab("cms");
         triggerToast("Login Successful! Welcome Admin.", "success");
       } else {
-        triggerToast("Incorrect Password. Please try again.", "error");
+        setLoginError("Incorrect password. Please try again.");
       }
       setIsAuthenticating(false);
     }, 600);
@@ -665,7 +911,7 @@ export default function App() {
 
   const handleFileUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    type: 'profilePhoto' | 'cv' | 'project' | 'research' | 'projectGallery'
+    type: 'profilePhoto' | 'cv' | 'project' | 'research' | 'projectGallery' | 'researchGallery'
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -708,6 +954,11 @@ export default function App() {
         }));
       } else if (type === 'research') {
         setNewResearch(prev => ({ ...prev, imageUrl: base64String }));
+      } else if (type === 'researchGallery') {
+        setNewResearch(prev => ({
+          ...prev,
+          gallery: [...(Array.isArray(prev.gallery) ? prev.gallery : []), base64String],
+        }));
       }
 
       triggerToast("File uploaded successfully!", "success");
@@ -874,10 +1125,12 @@ export default function App() {
       return;
     }
 
-    const item = { ...newProject, id: "proj-" + Date.now() };
+    const nextOrder = projects.length > 0 ? Math.max(...projects.map((p) => p.order ?? 0)) + 1 : 0;
+    const projectWithOrder = { ...newProject, order: nextOrder };
+    const item = { ...projectWithOrder, id: "proj-" + Date.now() };
     if (isLive && db) {
       try {
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'projects'), newProject);
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'projects'), projectWithOrder);
         triggerToast("Project added to cloud successfully!", "success");
       } catch (e) {
         triggerToast("Failed to upload project.", "error");
@@ -909,6 +1162,30 @@ export default function App() {
     }
     const ref = doc(db, 'artifacts', appId, 'public', 'data', 'projects', id);
     await setDoc(ref, updatedData, { merge: true });
+  };
+
+  // Menyusun ulang urutan Application Projects setelah drag-and-drop di CMS.
+  // Sama seperti pola Experience/Skills: field `order` tiap item diperbarui
+  // secara lokal & dipersist ke Firestore via batch write, lalu halaman
+  // publik (sortedProjects) otomatis mengikuti urutan baru ini.
+  const handleReorderProjects = async (reorderedList: any[]) => {
+    const withNewOrder = reorderedList.map((item, idx) => ({ ...item, order: idx }));
+    const archivedUntouched = projects.filter((p) => p.isArchived);
+    setProjects([...withNewOrder, ...archivedUntouched]);
+
+    if (isLive && db) {
+      try {
+        const batch = writeBatch(db);
+        withNewOrder.forEach((item) => {
+          const ref = doc(db, 'artifacts', appId, 'public', 'data', 'projects', item.id);
+          batch.update(ref, { order: item.order });
+        });
+        await batch.commit();
+      } catch (e) {
+        console.error("Failed to save new project order:", e);
+        triggerToast("Failed to save new order. Please try again.", "error");
+      }
+    }
   };
 
   const toggleArchiveProject = async (project: any) => {
@@ -995,8 +1272,30 @@ export default function App() {
     await setDoc(ref, updatedData, { merge: true });
   };
 
+  // Menyusun ulang urutan Research Projects setelah drag-and-drop di CMS,
+  // mengikuti pola yang sama dengan Application Projects di atas.
+  const handleReorderResearch = async (reorderedList: any[]) => {
+    const withNewOrder = reorderedList.map((item, idx) => ({ ...item, order: idx }));
+    const archivedUntouched = research.filter((r) => r.isArchived);
+    setResearch([...withNewOrder, ...archivedUntouched]);
+
+    if (isLive && db) {
+      try {
+        const batch = writeBatch(db);
+        withNewOrder.forEach((item) => {
+          const ref = doc(db, 'artifacts', appId, 'public', 'data', 'research', item.id);
+          batch.update(ref, { order: item.order });
+        });
+        await batch.commit();
+      } catch (e) {
+        console.error("Failed to save new research order:", e);
+        triggerToast("Failed to save new order. Please try again.", "error");
+      }
+    }
+  };
+
   const resetResearchForm = () => {
-    setNewResearch({ title: "", description: "", imageUrl: "" });
+    setNewResearch({ title: "", description: "", imageUrl: "", gallery: [] });
     setEditingResearchId(null);
   };
 
@@ -1005,7 +1304,8 @@ export default function App() {
     setNewResearch({
       title: item.title || "",
       description: item.description || "",
-      imageUrl: item.imageUrl || ""
+      imageUrl: item.imageUrl || "",
+      gallery: item.gallery || []
     });
   };
 
@@ -1033,10 +1333,12 @@ export default function App() {
       return;
     }
 
-    const item = { ...newResearch, id: "res-" + Date.now() };
+    const nextOrder = research.length > 0 ? Math.max(...research.map((r) => r.order ?? 0)) + 1 : 0;
+    const researchWithOrder = { ...newResearch, order: nextOrder };
+    const item = { ...researchWithOrder, id: "res-" + Date.now() };
     if (isLive && db) {
       try {
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'research'), newResearch);
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'research'), researchWithOrder);
         triggerToast("New research successfully uploaded to cloud!", "success");
       } catch (e: any) {
         triggerToast("Failed to upload research.", "error");
@@ -1165,6 +1467,27 @@ export default function App() {
   return (
     <div className="min-h-screen bg-white text-zinc-900 font-sans antialiased selection:bg-zinc-900 selection:text-white transition-colors duration-200 relative">
 
+      {/* Keyframes pendukung transisi swipe pada modal detail karya. Disertakan
+          inline agar animasi tetap berfungsi tanpa bergantung pada konfigurasi
+          Tailwind eksternal (mengikuti kelas custom animate-fade-in/slide-up
+          yang sudah dipakai di tempat lain pada file ini). */}
+      <style>{`
+        @keyframes workSlideInRight {
+          from { transform: translateX(40px); opacity: 0.4; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes workSlideInLeft {
+          from { transform: translateX(-40px); opacity: 0.4; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        .animate-work-slide-in-right {
+          animation: workSlideInRight 0.3s ease-out;
+        }
+        .animate-work-slide-in-left {
+          animation: workSlideInLeft 0.3s ease-out;
+        }
+      `}</style>
+
       {/* ============================================================================
           7. TOAST NOTIFIKASI GLOBAL
           ============================================================================ */}
@@ -1266,7 +1589,30 @@ export default function App() {
 
         {/* Menu Navigasi Seluler */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-t border-zinc-100 bg-white/95 backdrop-blur-md py-4 px-6 absolute top-16 left-0 right-0 shadow-lg flex flex-col gap-3">
+          <div className="md:hidden border-t border-zinc-100 bg-white/95 backdrop-blur-md py-4 px-6 absolute top-16 left-0 right-0 shadow-lg flex flex-col gap-3 max-h-[calc(100vh-4rem)] overflow-y-auto">
+            {!(activeTab === 'cms' && isAdmin) && (
+              <>
+                <div className="flex flex-col gap-1">
+                  {[
+                    { id: 'about', label: 'About Me', section: 'hero' },
+                    { id: 'projects', label: 'Projects', section: 'works' },
+                    { id: 'work', label: 'Experience', section: 'experience' },
+                    { id: 'skills', label: 'Skills', section: 'skills' },
+                    { id: 'education', label: 'Education', section: 'education' },
+                  ].map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => { scrollToPortfolioSection(item.id as any, item.section); setMobileMenuOpen(false); }}
+                      className={`w-full text-left py-2 px-3 rounded-lg text-sm font-medium transition-colors ${portfolioSectionTab === item.id ? 'bg-zinc-950 text-white' : 'text-zinc-600 hover:bg-zinc-50'}`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="border-t border-zinc-100 my-1" />
+              </>
+            )}
             <button
               onClick={() => { setActiveTab("portfolio"); setMobileMenuOpen(false); }}
               className={`w-full text-left py-2 px-3 rounded-lg text-sm font-medium ${activeTab === 'portfolio' ? 'bg-zinc-100 text-zinc-950 font-semibold' : 'text-zinc-500'}`}
@@ -1321,7 +1667,7 @@ export default function App() {
           >
             <div className={`col-span-1 md:col-span-8 space-y-6 order-last md:order-first transition-all ${introAnimated ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
               <div className="space-y-3">
-                <span className="text-sm font-bold tracking-widest text-zinc-400 uppercase">Open for Collaboration</span>
+                <span className="text-sm font-bold tracking-widest text-zinc-400 uppercase">Open to Work</span>
                 <h1 className={`text-4xl md:text-5xl lg:text-6xl font-extrabold text-zinc-900 tracking-tight leading-tight ${introAnimated ? 'fly-in' : 'opacity-0'}`}>
                   Hi, I'm {profile.name || "Portfolio Creator"}
                 </h1>
@@ -1456,25 +1802,6 @@ export default function App() {
             {/* TAB CONTENT: PROYEK */}
             {portfolioWorksTab === "projects" && (
               <div className="space-y-8">
-                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                  <p className="text-sm text-zinc-500">Sort projects by title.</p>
-                  <div className="inline-flex overflow-hidden rounded-full border border-zinc-200 bg-white shadow-sm">
-                    <button
-                      type="button"
-                      onClick={() => setProjectSortOrder('asc')}
-                      className={`px-4 py-2 text-xs font-semibold transition ${projectSortOrder === 'asc' ? 'bg-zinc-950 text-white' : 'text-zinc-600 hover:bg-zinc-50'}`}
-                    >
-                      A → Z
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setProjectSortOrder('desc')}
-                      className={`px-4 py-2 text-xs font-semibold transition ${projectSortOrder === 'desc' ? 'bg-zinc-950 text-white' : 'text-zinc-600 hover:bg-zinc-50'}`}
-                    >
-                      Z → A
-                    </button>
-                  </div>
-                </div>
                 {paginatedProjects.length === 0 ? (
                   <div className="rounded-3xl border border-dashed border-zinc-200 bg-zinc-50 p-10 text-center text-zinc-500">
                     <p className="text-sm font-medium">No projects are available yet.</p>
@@ -1612,7 +1939,7 @@ export default function App() {
               </div>
             )}
 
-            {/* TAB CONTENT: RISET (HANYA GAMBAR & DESKRIPSI) */}
+            {/* TAB CONTENT: RISET */}
             {portfolioWorksTab === "research" && (
               <div className="space-y-8">
                 {paginatedResearch.length === 0 ? (
@@ -1649,17 +1976,9 @@ export default function App() {
                             <h3 className="text-xl font-bold text-zinc-900 group-hover:text-indigo-950 transition-colors line-clamp-2">
                               {item.title}
                             </h3>
-                            <p className="text-zinc-500 text-sm leading-relaxed line-clamp-3">
+                            <p className="text-zinc-500 text-sm leading-relaxed line-clamp-5">
                               {item.description}
                             </p>
-                          </div>
-
-                          {/* Info Tambahan sebagai pengganti Tombol Tautan */}
-                          <div className="mt-auto pt-4 border-t border-zinc-100 flex items-center justify-between text-xs text-zinc-400">
-                            <span className="flex items-center gap-1">
-                              📂 Open Publication
-                            </span>
-                            <span>Peer-Reviewed</span>
                           </div>
                         </div>
                       </div>
@@ -2340,21 +2659,57 @@ export default function App() {
                       {/* List Proyek: Aktif & Diarsipkan */}
                       <div className="space-y-3">
                         <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Active Projects</h3>
-                        {projects.filter(p => !p.isArchived).length === 0 ? (
+                        {sortedProjects.length === 0 ? (
                           <p className="text-xs text-zinc-400 italic">No active projects.</p>
                         ) : (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {projects.filter(p => !p.isArchived).map(proj => (
-                              <div key={proj.id} className="p-4 border border-zinc-150 rounded-xl bg-white flex flex-col justify-between">
+                          <>
+                            <p className="text-[11px] text-zinc-400">Drag the handle (⠿) to reorder projects. The new order is saved automatically and reflected on the public portfolio.</p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {sortedProjects.map(proj => (
+                              <div
+                                key={proj.id}
+                                draggable
+                                onDragStart={() => setDraggedProjectId(proj.id)}
+                                onDragEnter={() => {
+                                  if (draggedProjectId === null || draggedProjectId === proj.id) return;
+                                  setDragOverProjectId(proj.id);
+                                }}
+                                onDragOver={(e) => e.preventDefault()}
+                                onDragEnd={() => {
+                                  if (draggedProjectId !== null && dragOverProjectId !== null && draggedProjectId !== dragOverProjectId) {
+                                    const reordered = [...sortedProjects];
+                                    const fromIndex = reordered.findIndex((p) => p.id === draggedProjectId);
+                                    const toIndex = reordered.findIndex((p) => p.id === dragOverProjectId);
+                                    if (fromIndex !== -1 && toIndex !== -1) {
+                                      const [moved] = reordered.splice(fromIndex, 1);
+                                      reordered.splice(toIndex, 0, moved);
+                                      handleReorderProjects(reordered);
+                                    }
+                                  }
+                                  setDraggedProjectId(null);
+                                  setDragOverProjectId(null);
+                                }}
+                                className={`p-4 border rounded-xl bg-white flex flex-col justify-between transition-all ${draggedProjectId === proj.id ? "opacity-40" : "border-zinc-150"} ${dragOverProjectId === proj.id && draggedProjectId !== proj.id ? "ring-2 ring-zinc-900" : ""}`}
+                              >
                                 <div className="space-y-2">
                                   <div className="flex justify-between items-start gap-4">
-                                    <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-3 min-w-0">
+                                      <span
+                                        className="cursor-grab active:cursor-grabbing text-zinc-300 hover:text-zinc-500 transition-colors shrink-0"
+                                        title="Drag to reorder"
+                                      >
+                                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                                          <circle cx="9" cy="6" r="1.5" /><circle cx="15" cy="6" r="1.5" />
+                                          <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
+                                          <circle cx="9" cy="18" r="1.5" /><circle cx="15" cy="18" r="1.5" />
+                                        </svg>
+                                      </span>
                                       {proj.imageUrl && (
-                                        <img src={proj.imageUrl} className="w-10 h-10 object-cover rounded-lg border" alt="preview" />
+                                        <img src={proj.imageUrl} className="w-10 h-10 object-cover rounded-lg border shrink-0" alt="preview" />
                                       )}
-                                      <h4 className="font-bold text-zinc-900 text-sm leading-tight">{proj.title}</h4>
+                                      <h4 className="font-bold text-zinc-900 text-sm leading-tight truncate">{proj.title}</h4>
                                     </div>
-                                    <div className="flex items-center gap-1">
+                                    <div className="flex items-center gap-1 shrink-0">
                                       <button
                                         type="button"
                                         onClick={() => startEditProject(proj)}
@@ -2391,7 +2746,8 @@ export default function App() {
                                 </div>
                               </div>
                             ))}
-                          </div>
+                            </div>
+                          </>
                         )}
                       </div>
 
@@ -2457,7 +2813,7 @@ export default function App() {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-1">
-                            <label className="text-xs font-bold text-zinc-500">Research Title / Journal</label>
+                            <label className="text-xs font-bold text-zinc-500">Research Title</label>
                             <input
                               type="text"
                               value={newResearch.title}
@@ -2467,7 +2823,7 @@ export default function App() {
                             />
                           </div>
                           <div className="space-y-1">
-                            <label className="text-xs font-bold text-zinc-500">Research Image Link (Technical Illustration)</label>
+                            <label className="text-xs font-bold text-zinc-500">Research Image Link</label>
                             <input
                               type="text"
                               value={newResearch.imageUrl}
@@ -2505,7 +2861,7 @@ export default function App() {
                         </div>
 
                         <div className="space-y-1">
-                          <label className="text-xs font-bold text-zinc-500">Abstract / Research Description</label>
+                          <label className="text-xs font-bold text-zinc-500">Description</label>
                           <textarea
                             value={newResearch.description}
                             onChange={(e) => setNewResearch({ ...newResearch, description: e.target.value })}
@@ -2513,6 +2869,66 @@ export default function App() {
                             rows={3}
                             className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
                           />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-xs font-bold text-zinc-500">Gallery Images</label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={newResearchGalleryUrl}
+                              onChange={(e) => setNewResearchGalleryUrl(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  addResearchGalleryImage();
+                                }
+                              }}
+                              placeholder="Add gallery image URL"
+                              className="flex-1 bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={addResearchGalleryImage}
+                              className="text-xs font-semibold uppercase tracking-wide px-3 py-2 rounded-lg bg-zinc-950 text-white hover:bg-zinc-800 transition-colors"
+                            >
+                              Add
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-2 mt-2">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => handleFileUpload(e, 'researchGallery')}
+                              disabled={isUploading.researchGallery}
+                              className="text-xs file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-zinc-100 file:text-zinc-700 hover:file:bg-zinc-200 cursor-pointer"
+                            />
+                            {isUploading.researchGallery && (
+                              <span className="text-xs text-zinc-500 animate-pulse font-semibold">
+                                Uploading gallery image ({uploadProgress.researchGallery}%)…
+                              </span>
+                            )}
+                          </div>
+                          {newResearch.gallery.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                              {newResearch.gallery.map((img, idx) => (
+                                <div key={idx} className="inline-flex items-center gap-2 rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-700 border border-zinc-200">
+                                  <span className="truncate max-w-[180px]">{img}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setNewResearch((prev) => ({
+                                      ...prev,
+                                      gallery: prev.gallery.filter((_, i) => i !== idx),
+                                    }))}
+                                    className="text-zinc-500 hover:text-red-600"
+                                    title="Remove gallery image"
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
 
                         <div className="flex flex-col md:flex-row items-start gap-3">
@@ -2537,21 +2953,57 @@ export default function App() {
                       {/* List Riset: Aktif & Diarsipkan */}
                       <div className="space-y-3">
                         <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Active Research Papers</h3>
-                        {research.filter(r => !r.isArchived).length === 0 ? (
+                        {activeResearch.length === 0 ? (
                           <p className="text-xs text-zinc-400 italic">No active research items.</p>
                         ) : (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {research.filter(r => !r.isArchived).map(res => (
-                              <div key={res.id} className="p-4 border border-zinc-150 rounded-xl bg-white flex flex-col justify-between">
+                          <>
+                            <p className="text-[11px] text-zinc-400">Drag the handle (⠿) to reorder research items. The new order is saved automatically and reflected on the public portfolio.</p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {activeResearch.map(res => (
+                              <div
+                                key={res.id}
+                                draggable
+                                onDragStart={() => setDraggedResearchId(res.id)}
+                                onDragEnter={() => {
+                                  if (draggedResearchId === null || draggedResearchId === res.id) return;
+                                  setDragOverResearchId(res.id);
+                                }}
+                                onDragOver={(e) => e.preventDefault()}
+                                onDragEnd={() => {
+                                  if (draggedResearchId !== null && dragOverResearchId !== null && draggedResearchId !== dragOverResearchId) {
+                                    const reordered = [...activeResearch];
+                                    const fromIndex = reordered.findIndex((r) => r.id === draggedResearchId);
+                                    const toIndex = reordered.findIndex((r) => r.id === dragOverResearchId);
+                                    if (fromIndex !== -1 && toIndex !== -1) {
+                                      const [moved] = reordered.splice(fromIndex, 1);
+                                      reordered.splice(toIndex, 0, moved);
+                                      handleReorderResearch(reordered);
+                                    }
+                                  }
+                                  setDraggedResearchId(null);
+                                  setDragOverResearchId(null);
+                                }}
+                                className={`p-4 border rounded-xl bg-white flex flex-col justify-between transition-all ${draggedResearchId === res.id ? "opacity-40" : "border-zinc-150"} ${dragOverResearchId === res.id && draggedResearchId !== res.id ? "ring-2 ring-zinc-900" : ""}`}
+                              >
                                 <div className="space-y-2">
                                   <div className="flex justify-between items-start gap-4">
-                                    <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-3 min-w-0">
+                                      <span
+                                        className="cursor-grab active:cursor-grabbing text-zinc-300 hover:text-zinc-500 transition-colors shrink-0"
+                                        title="Drag to reorder"
+                                      >
+                                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                                          <circle cx="9" cy="6" r="1.5" /><circle cx="15" cy="6" r="1.5" />
+                                          <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
+                                          <circle cx="9" cy="18" r="1.5" /><circle cx="15" cy="18" r="1.5" />
+                                        </svg>
+                                      </span>
                                       {res.imageUrl && (
-                                        <img src={res.imageUrl} className="w-10 h-10 object-cover rounded-lg border" alt="research preview" />
+                                        <img src={res.imageUrl} className="w-10 h-10 object-cover rounded-lg border shrink-0" alt="research preview" />
                                       )}
-                                      <h4 className="font-bold text-zinc-900 text-sm leading-tight">{res.title}</h4>
+                                      <h4 className="font-bold text-zinc-900 text-sm leading-tight truncate">{res.title}</h4>
                                     </div>
-                                    <div className="flex items-center gap-1">
+                                    <div className="flex items-center gap-1 shrink-0">
                                       <button
                                         type="button"
                                         onClick={() => startEditResearch(res)}
@@ -2588,7 +3040,8 @@ export default function App() {
                                 </div>
                               </div>
                             ))}
-                          </div>
+                            </div>
+                          </>
                         )}
                       </div>
 
@@ -3076,19 +3529,27 @@ export default function App() {
           ============================================================================ */}
       {selectedWork && (
         <>
-          <div className="fixed inset-0 bg-zinc-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6 animate-fade-in">
+          <div
+            className="fixed inset-0 bg-zinc-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6 animate-fade-in"
+            onMouseMove={resetWorkNavTimer}
+            onTouchStart={resetWorkNavTimer}
+          >
 
             {/* Navigator Proyek/Riset Sebelumnya & Berikutnya — mengambang DI LUAR kartu modal,
                 menempel pada overlay penuh layar, hanya menukar selectedWork (tidak memanggil
-                scrollIntoView), sehingga posisi scroll halaman di belakang modal tidak berubah */}
-            {(workType === 'project' ? sortedProjects : activeResearch).length > 1 && (
+                scrollIntoView), sehingga posisi scroll halaman di belakang modal tidak berubah.
+                Di mobile tombol ini disembunyikan total — swipe jadi satu-satunya metode
+                navigasi. Di desktop tombol tetap tampil & berfungsi penuh, sebagai pelengkap
+                drag/swipe trackpad. */}
+            {!isMobileViewport && (workType === 'project' ? sortedProjects : activeResearch).length > 1 && (
               <>
                 <button
                   type="button"
-                  onClick={() => goToAdjacentWork(-1)}
+                  onClick={() => { goToAdjacentWork(-1); resetWorkNavTimer(); }}
                   aria-label="Previous project"
                   title="Previous"
-                  className="fixed left-2 md:left-6 top-1/2 -translate-y-1/2 z-[60] bg-white/90 backdrop-blur-md border border-zinc-200 text-zinc-700 hover:text-zinc-900 hover:bg-white p-3 rounded-full transition-all duration-300 ease-in-out shadow-lg hover:scale-105"
+                  className="fixed left-2 md:left-6 top-1/2 -translate-y-1/2 z-[60] bg-white/90 backdrop-blur-md border border-zinc-200 text-zinc-700 hover:text-zinc-900 hover:bg-white p-3 rounded-full shadow-lg hover:scale-105 pointer-events-auto"
+                  style={{ transition: 'opacity 0.4s ease, transform 0.3s ease', opacity: workNavVisible ? 1 : 0.15 }}
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
@@ -3096,10 +3557,11 @@ export default function App() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => goToAdjacentWork(1)}
+                  onClick={() => { goToAdjacentWork(1); resetWorkNavTimer(); }}
                   aria-label="Next project"
                   title="Next"
-                  className="fixed right-2 md:right-6 top-1/2 -translate-y-1/2 z-[60] bg-white/90 backdrop-blur-md border border-zinc-200 text-zinc-700 hover:text-zinc-900 hover:bg-white p-3 rounded-full transition-all duration-300 ease-in-out shadow-lg hover:scale-105"
+                  className="fixed right-2 md:right-6 top-1/2 -translate-y-1/2 z-[60] bg-white/90 backdrop-blur-md border border-zinc-200 text-zinc-700 hover:text-zinc-900 hover:bg-white p-3 rounded-full shadow-lg hover:scale-105 pointer-events-auto"
+                  style={{ transition: 'opacity 0.4s ease, transform 0.3s ease', opacity: workNavVisible ? 1 : 0.15 }}
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
@@ -3108,7 +3570,51 @@ export default function App() {
               </>
             )}
 
-            <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] shadow-2xl relative flex flex-col overflow-hidden">
+            {/* Pagination dots — visible on all viewports, replaces the old "Swipe" label.
+                Centered horizontally via left-1/2 + -translate-x-1/2. */}
+            {(() => {
+              const workList = workType === 'project' ? sortedProjects : activeResearch;
+              if (workList.length <= 1) return null;
+              const currentWorkIndex = workList.findIndex((w) => w.id === selectedWork?.id);
+              return (
+                <div
+                  className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] flex items-center justify-center gap-1.5"
+                  style={{ transition: 'opacity 0.4s ease', opacity: workNavVisible ? 1 : 0.15 }}
+                >
+                  {workList.map((_: any, idx: number) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        if (idx === currentWorkIndex) return;
+                        setWorkModalTransitionDirection(idx > currentWorkIndex ? 1 : -1);
+                        setSelectedWork(workList[idx]);
+                        resetWorkNavTimer();
+                      }}
+                      aria-label={`Go to ${workType} ${idx + 1}`}
+                      className={`rounded-full transition-all duration-200 ${idx === currentWorkIndex ? 'w-5 h-2 bg-white' : 'w-2 h-2 bg-white/40 hover:bg-white/70'}`}
+                    />
+                  ))}
+                </div>
+              );
+            })()}
+
+            <div
+              className={`bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] shadow-2xl relative flex flex-col overflow-hidden select-none ${workModalIsDragging ? '' : 'transition-transform duration-300 ease-out'} ${workModalTransitionDirection === 1 ? 'animate-work-slide-in-right' : workModalTransitionDirection === -1 ? 'animate-work-slide-in-left' : ''}`}
+              style={{
+                transform: `translateX(${workModalDragOffset}px)`,
+                touchAction: 'pan-y',
+                cursor: workModalIsDragging ? 'grabbing' : 'grab',
+              }}
+              onTouchStart={(e) => workModalPointerDown(e.touches[0].clientX)}
+              onTouchMove={(e) => workModalPointerMove(e.touches[0].clientX)}
+              onTouchEnd={workModalPointerUp}
+              onTouchCancel={workModalPointerCancel}
+              onMouseDown={(e) => workModalPointerDown(e.clientX)}
+              onMouseMove={(e) => { if (workModalIsPointerDown.current) workModalPointerMove(e.clientX); }}
+              onMouseUp={workModalPointerUp}
+              onMouseLeave={() => { if (workModalIsPointerDown.current) workModalPointerCancel(); }}
+            >
 
             {/* Tombol Tutup Modal — terkunci di pojok kanan atas modal, tidak ikut scroll */}
             <button
@@ -3183,9 +3689,11 @@ export default function App() {
                 </div>
               )}
 
-              {workType === 'project' && Array.isArray(selectedWork.gallery) && selectedWork.gallery.length > 0 && (
+              {Array.isArray(selectedWork.gallery) && selectedWork.gallery.length > 0 && (
                 <div className="space-y-4">
-                  <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-widest border-b border-zinc-100 pb-2">Project Gallery</h3>
+                  <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-widest border-b border-zinc-100 pb-2">
+                    {workType === 'project' ? 'Project Gallery' : 'Research Gallery'}
+                  </h3>
                   <div className="max-h-64 overflow-y-auto pr-1">
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                       {selectedWork.gallery.map((imageUrl: string, idx: number) => (
@@ -3241,26 +3749,32 @@ export default function App() {
             className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
             onWheel={(e) => e.preventDefault()}
             onTouchStart={(e) => {
+              resetGalleryNavTimer();
               if (galleryZoom > GALLERY_MIN_ZOOM) return;
               galleryTouchStartX.current = e.touches[0].clientX;
             }}
             onTouchEnd={(e) => {
               if (galleryZoom > GALLERY_MIN_ZOOM || galleryTouchStartX.current === null) return;
               const deltaX = e.changedTouches[0].clientX - galleryTouchStartX.current;
-              const threshold = 40;
               const total = selectedWork.gallery.length;
-              if (deltaX > threshold) {
+              if (deltaX > GALLERY_SWIPE_THRESHOLD) {
                 setGallerySlideIndex((i) => (i - 1 + total) % total);
-              } else if (deltaX < -threshold) {
+              } else if (deltaX < -GALLERY_SWIPE_THRESHOLD) {
                 setGallerySlideIndex((i) => (i + 1) % total);
               }
               galleryTouchStartX.current = null;
             }}
+            onMouseDown={(e) => galleryMouseDown(e.clientX)}
+            onMouseMove={(e) => { resetGalleryNavTimer(); galleryMouseMove(e.clientX); }}
+            onMouseUp={galleryMouseUp}
+            onMouseLeave={galleryMouseCancel}
           >
+            {/* Close button */}
             <button
               type="button"
               onClick={() => setSelectedGalleryImage(null)}
-              className="absolute top-4 right-4 z-50 rounded-full bg-white/90 p-3 text-zinc-900 shadow-lg hover:bg-white transition-colors"
+              className="absolute top-4 right-4 z-50 rounded-full bg-white/90 p-3 text-zinc-900 shadow-lg hover:bg-white transition-colors pointer-events-auto"
+              style={{ transition: 'opacity 0.4s ease', opacity: galleryNavVisible ? 1 : 0.15 }}
               aria-label="Close gallery zoom"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3273,9 +3787,10 @@ export default function App() {
               <>
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); setGallerySlideIndex((i) => (i - 1 + selectedWork.gallery.length) % selectedWork.gallery.length); }}
+                  onClick={(e) => { e.stopPropagation(); resetGalleryNavTimer(); setGallerySlideIndex((i) => (i - 1 + selectedWork.gallery.length) % selectedWork.gallery.length); }}
                   aria-label="Previous image"
-                  className="absolute left-3 md:left-6 top-1/2 -translate-y-1/2 z-50 bg-white/90 hover:bg-white text-zinc-900 p-3 rounded-full shadow-lg transition-colors"
+                  className="absolute left-3 md:left-6 top-1/2 -translate-y-1/2 z-50 bg-white/90 hover:bg-white text-zinc-900 p-3 rounded-full shadow-lg transition-colors pointer-events-auto"
+                  style={{ transition: 'opacity 0.4s ease', opacity: galleryNavVisible ? 1 : 0.15 }}
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
@@ -3283,9 +3798,10 @@ export default function App() {
                 </button>
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); setGallerySlideIndex((i) => (i + 1) % selectedWork.gallery.length); }}
+                  onClick={(e) => { e.stopPropagation(); resetGalleryNavTimer(); setGallerySlideIndex((i) => (i + 1) % selectedWork.gallery.length); }}
                   aria-label="Next image"
-                  className="absolute right-3 md:right-6 top-1/2 -translate-y-1/2 z-50 bg-white/90 hover:bg-white text-zinc-900 p-3 rounded-full shadow-lg transition-colors"
+                  className="absolute right-3 md:right-6 top-1/2 -translate-y-1/2 z-50 bg-white/90 hover:bg-white text-zinc-900 p-3 rounded-full shadow-lg transition-colors pointer-events-auto"
+                  style={{ transition: 'opacity 0.4s ease', opacity: galleryNavVisible ? 1 : 0.15 }}
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
@@ -3295,9 +3811,10 @@ export default function App() {
             )}
 
             <div
-              className={`max-w-[90vw] max-h-[80vh] overflow-hidden rounded-3xl border border-white/10 shadow-2xl bg-black select-none ${galleryZoom > GALLERY_MIN_ZOOM ? (isGalleryPanning ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default'}`}
+              className={`max-w-[90vw] max-h-[80vh] overflow-hidden rounded-3xl border border-white/10 shadow-2xl bg-black select-none ${galleryZoom > GALLERY_MIN_ZOOM ? (isGalleryPanning ? 'cursor-grabbing' : 'cursor-grab') : (galleryIsDraggingSwiping ? 'cursor-grabbing' : 'cursor-grab')}`}
+              style={{ transform: galleryZoom <= GALLERY_MIN_ZOOM ? `translateX(${galleryMouseDragOffset}px)` : undefined, transition: galleryIsDraggingSwiping ? 'none' : 'transform 0.3s ease-out' }}
               onWheel={handleGalleryWheel}
-              onMouseDown={(e) => { e.stopPropagation(); handleGalleryPanStart(e.clientX, e.clientY); }}
+              onMouseDown={(e) => { e.stopPropagation(); if (galleryZoom > GALLERY_MIN_ZOOM) handleGalleryPanStart(e.clientX, e.clientY); }}
               onMouseMove={(e) => { if (galleryPanDragRef.current) { e.stopPropagation(); handleGalleryPanMove(e.clientX, e.clientY); } }}
               onMouseUp={handleGalleryPanEnd}
               onMouseLeave={handleGalleryPanEnd}
@@ -3313,7 +3830,10 @@ export default function App() {
             </div>
 
             {/* Kontrol Zoom In / Zoom Out / Reset */}
-            <div className="absolute bottom-6 right-4 md:right-6 z-50 flex items-center gap-1.5 bg-white/90 rounded-full shadow-lg p-1.5">
+            <div
+              className="absolute bottom-6 right-4 md:right-6 z-50 flex items-center gap-1.5 bg-white/90 rounded-full shadow-lg p-1.5 pointer-events-auto"
+              style={{ transition: 'opacity 0.4s ease', opacity: galleryNavVisible ? 1 : 0.15 }}
+            >
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); zoomGalleryBy(-0.25); }}
@@ -3356,16 +3876,19 @@ export default function App() {
               )}
             </div>
 
-            {/* Indikator dots */}
+            {/* Pagination dots — centered horizontally, consistent styling with project modal dots */}
             {selectedWork.gallery.length > 1 && (
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 z-50">
+              <div
+                className="absolute bottom-6 left-0 right-0 flex items-center justify-center gap-1.5 z-50"
+                style={{ transition: 'opacity 0.4s ease', opacity: galleryNavVisible ? 1 : 0.15 }}
+              >
                 {selectedWork.gallery.map((_: string, idx: number) => (
                   <button
                     key={idx}
                     type="button"
                     onClick={(e) => { e.stopPropagation(); setGallerySlideIndex(idx); }}
                     aria-label={`Go to image ${idx + 1}`}
-                    className={`h-2 rounded-full transition-all ${idx === gallerySlideIndex ? "w-6 bg-white" : "w-2 bg-white/40 hover:bg-white/70"}`}
+                    className={`rounded-full transition-all duration-200 ${idx === gallerySlideIndex ? 'w-5 h-2 bg-white' : 'w-2 h-2 bg-white/40 hover:bg-white/70'}`}
                   />
                 ))}
               </div>
@@ -3408,13 +3931,18 @@ export default function App() {
                 <input
                   type="password"
                   value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
+                  onChange={(e) => { setLoginPassword(e.target.value); if (loginError) setLoginError(""); }}
                   placeholder="Enter password..."
-                  className="w-full bg-zinc-50 border border-zinc-200 focus:border-zinc-900 focus:bg-white rounded-lg px-3 py-2 text-sm focus:outline-none transition-all font-mono"
+                  className={`w-full bg-zinc-50 border rounded-lg px-3 py-2 text-sm focus:outline-none transition-all font-mono ${loginError ? 'border-red-300 focus:border-red-500 bg-red-50/40' : 'border-zinc-200 focus:border-zinc-900 focus:bg-white'}`}
                 />
-                <p className="text-[10px] text-zinc-400 italic pt-1 text-center">
-                  Default activated bypass demo. Just click "Password Verification" directly.
-                </p>
+                {loginError && (
+                  <p className="text-xs font-semibold text-red-600 flex items-center gap-1.5 pt-1">
+                    <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
+                    </svg>
+                    {loginError}
+                  </p>
+                )}
               </div>
 
               <button
@@ -3448,24 +3976,11 @@ export default function App() {
               {profile.name} — Portfolio Studio
             </h3>
             <p className="text-xs text-zinc-400">
-              Made by a passionate frontend developer with a love for clean design and seamless user experience.
+              Made by a passionate frontend developer with a love.
             </p>
           </div>
           <div className="flex items-center gap-6 text-xs font-semibold text-zinc-400">
             <span>© 2026. Copyright Reserved.</span>
-            <span className="text-zinc-300">|</span>
-            <button
-              onClick={() => {
-                if (isAdmin) {
-                  setActiveTab("cms");
-                } else {
-                  setShowLoginModal(true);
-                }
-              }}
-              className="hover:text-zinc-900 transition-colors"
-            >
-              Portal Management System
-            </button>
           </div>
         </div>
       </footer>
