@@ -1,9 +1,8 @@
-import KomponenGemini from './portfolio_cms'; // Pastikan nama setelah './' sama dengan nama file .tsx dari Gemini
-
+import PortfolioAdmin from './portfolio_cms';
 function App() {
   return (
     <div>
-      <KomponenGemini />
+      <PortfolioAdmin />
     </div>
   );
 }
