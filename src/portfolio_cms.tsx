@@ -3824,7 +3824,7 @@ export default function App() {
               setGalleryMouseDragOffset(e.clientX - galleryPointerRef.current.startX);
               resetGalleryNavTimer();
             }}
-            onPointerUp={(e) => {
+            onPointerUp={(_e) => {
               if (!galleryPointerRef.current) return;
               const { startX, currentX, fromBackdrop } = galleryPointerRef.current;
               const deltaX = currentX - startX;
