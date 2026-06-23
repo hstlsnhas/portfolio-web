@@ -4053,7 +4053,7 @@ export default function App() {
               {profile.name} — Portfolio Studio
             </h3>
             <p className="text-xs text-zinc-400">
-              Made by a passionate frontend developer with love.
+              Made with love by a passionate frontend developer.
             </p>
           </div>
           <div className="flex items-center gap-6 text-xs font-semibold text-zinc-400">
