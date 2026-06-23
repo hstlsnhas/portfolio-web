@@ -160,12 +160,11 @@ export default function App() {
   const galleryPanDragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
   const [isGalleryPanning, setIsGalleryPanning] = useState(false);
   // Mouse drag (desktop/trackpad) swipe state for the gallery lightbox
-  const galleryMouseDragStartX = useRef<number | null>(null);
-  const galleryMouseDragCurrentX = useRef<number>(0);
-  const galleryMouseIsDown = useRef(false);
   const [galleryMouseDragOffset, setGalleryMouseDragOffset] = useState(0);
   const [galleryIsDraggingSwiping, setGalleryIsDraggingSwiping] = useState(false);
   const GALLERY_SWIPE_THRESHOLD = 60;
+  // Slide direction for gallery transition animation: 1 = next (left), -1 = prev (right), 0 = none
+  const [galleryTransitionDirection, setGalleryTransitionDirection] = useState<1 | -1 | 0>(0);
   const GALLERY_MIN_ZOOM = 1;
   const GALLERY_MAX_ZOOM = 4;
 
@@ -517,13 +516,18 @@ export default function App() {
     setSelectedWork(list[nextIndex]);
   };
 
-  // --- Work modal swipe/drag handlers (touch + mouse/trackpad) ---
-  // Bekerja di mobile (touch) maupun desktop (mouse drag), memberikan
-  // metode navigasi tambahan di samping tombol next/prev yang tetap aktif.
-  const workModalPointerDown = (clientX: number) => {
+  // --- Work modal unified swipe/drag handlers (touch + mouse/trackpad) ---
+  // Dipasang pada overlay terluar sehingga drag bekerja di mana saja: di atas
+  // kartu konten MAUPUN di area backdrop. Membedakan tap (gerakan < TAP_SLOP)
+  // dari swipe: tap pada backdrop menutup modal, swipe berpindah item.
+  const TAP_SLOP = 10; // px — di bawah ini dianggap klik/tap, bukan drag
+  const workModalDownOnBackdrop = useRef(false);
+
+  const workModalPointerDown = (clientX: number, fromBackdrop: boolean) => {
     workModalIsPointerDown.current = true;
     workModalDragStartX.current = clientX;
     workModalDragCurrentX.current = clientX;
+    workModalDownOnBackdrop.current = fromBackdrop;
     setWorkModalIsDragging(true);
     resetWorkNavTimer();
   };
@@ -542,12 +546,18 @@ export default function App() {
       return;
     }
     const deltaX = workModalDragCurrentX.current - workModalDragStartX.current;
+    const fromBackdrop = workModalDownOnBackdrop.current;
     workModalIsPointerDown.current = false;
     workModalDragStartX.current = null;
     setWorkModalIsDragging(false);
     setWorkModalDragOffset(0);
     resetWorkNavTimer();
 
+    if (Math.abs(deltaX) < TAP_SLOP) {
+      // Tap tanpa drag: tutup modal hanya jika tap mengenai backdrop (bukan kartu)
+      if (fromBackdrop) { setSelectedWork(null); setWorkType(null); }
+      return;
+    }
     if (deltaX > WORK_MODAL_SWIPE_THRESHOLD) {
       goToAdjacentWork(-1); // swipe kanan -> item sebelumnya
     } else if (deltaX < -WORK_MODAL_SWIPE_THRESHOLD) {
@@ -562,12 +572,29 @@ export default function App() {
     setWorkModalDragOffset(0);
   };
 
+  // Saat mouse drag aktif pada work modal, pasang listener di window agar
+  // gerakan & pelepasan mouse tetap terlacak meski cursor keluar dari kartu
+  // modal atau bahkan keluar viewport. Listener dilepas otomatis saat selesai.
+  useEffect(() => {
+    if (!workModalIsDragging) return;
+    const handleWindowMove = (e: MouseEvent) => workModalPointerMove(e.clientX);
+    const handleWindowUp = () => workModalPointerUp();
+    window.addEventListener('mousemove', handleWindowMove);
+    window.addEventListener('mouseup', handleWindowUp);
+    return () => {
+      window.removeEventListener('mousemove', handleWindowMove);
+      window.removeEventListener('mouseup', handleWindowUp);
+    };
+  }, [workModalIsDragging, selectedWork, workType]);
+
   // Navigasi keyboard untuk modal detail karya: tombol kiri/kanan berpindah
   // antar item, Escape menutup modal. Aktif di semua perangkat yang punya
   // keyboard (mobile maupun desktop), sebagai pelengkap aksesibilitas.
   useEffect(() => {
     if (!selectedWork) return;
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Gallery lightbox terbuka — biarkan gallery handler yang tangani arrow/escape
+      if (selectedGalleryImage) return;
       if (e.key === 'ArrowRight') {
         goToAdjacentWork(1);
       } else if (e.key === 'ArrowLeft') {
@@ -579,7 +606,19 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedWork, workType, sortedProjects, activeResearch]);
+  }, [selectedWork, workType, sortedProjects, activeResearch, selectedGalleryImage]);
+
+  // Keyboard untuk gallery lightbox: arrow ganti gambar, Escape tutup lightbox
+  useEffect(() => {
+    if (!selectedGalleryImage) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight') goToGallerySlide(1);
+      else if (e.key === 'ArrowLeft') goToGallerySlide(-1);
+      else if (e.key === 'Escape') setSelectedGalleryImage(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedGalleryImage, selectedWork, gallerySlideIndex]);
 
   // Bersihkan arah transisi sesaat setelah animasi slide selesai, supaya
   // item berikutnya yang dibuka via klik thumbnail tidak ikut "mewarisi"
@@ -589,6 +628,23 @@ export default function App() {
     const id = setTimeout(() => setWorkModalTransitionDirection(0), 300);
     return () => clearTimeout(id);
   }, [selectedWork, workModalTransitionDirection]);
+
+  // Navigasi gallery dengan arah — set direction state lalu ganti slide index.
+  // Sama persis dengan pola goToAdjacentWork pada work modal.
+  const goToGallerySlide = (direction: 1 | -1) => {
+    if (!selectedWork?.gallery?.length) return;
+    const total = selectedWork.gallery.length;
+    setGalleryTransitionDirection(direction);
+    setGallerySlideIndex((i) => (i + direction + total) % total);
+  };
+
+  // Clear gallery transition direction after animation completes (300ms),
+  // mirrors the workModalTransitionDirection cleanup effect.
+  useEffect(() => {
+    if (galleryTransitionDirection === 0) return;
+    const id = setTimeout(() => setGalleryTransitionDirection(0), 300);
+    return () => clearTimeout(id);
+  }, [gallerySlideIndex, galleryTransitionDirection]);
 
   // --- Gallery zoom helpers ---
   const clampGalleryZoom = (value: number) => Math.min(GALLERY_MAX_ZOOM, Math.max(GALLERY_MIN_ZOOM, value));
@@ -625,50 +681,13 @@ export default function App() {
     setIsGalleryPanning(false);
   };
 
-  // --- Gallery lightbox mouse drag/swipe handlers (desktop & trackpad) ---
-  // Mirrors the touch swipe logic but uses mousedown/mousemove/mouseup events.
-  // Only active when zoom is at minimum (no pan conflict).
-  const galleryMouseDown = (clientX: number) => {
-    if (galleryZoom > GALLERY_MIN_ZOOM) return; // hand off to pan handler
-    galleryMouseIsDown.current = true;
-    galleryMouseDragStartX.current = clientX;
-    galleryMouseDragCurrentX.current = clientX;
-    setGalleryIsDraggingSwiping(true);
-    setGalleryMouseDragOffset(0);
-    resetGalleryNavTimer();
-  };
-
-  const galleryMouseMove = (clientX: number) => {
-    if (!galleryMouseIsDown.current || galleryMouseDragStartX.current === null) return;
-    galleryMouseDragCurrentX.current = clientX;
-    setGalleryMouseDragOffset(clientX - galleryMouseDragStartX.current);
-    resetGalleryNavTimer();
-  };
-
-  const galleryMouseUp = () => {
-    if (!galleryMouseIsDown.current || galleryMouseDragStartX.current === null) {
-      setGalleryIsDraggingSwiping(false);
-      setGalleryMouseDragOffset(0);
-      return;
-    }
-    const deltaX = galleryMouseDragCurrentX.current - galleryMouseDragStartX.current;
-    galleryMouseIsDown.current = false;
-    galleryMouseDragStartX.current = null;
-    setGalleryIsDraggingSwiping(false);
-    setGalleryMouseDragOffset(0);
-    resetGalleryNavTimer();
-    if (!selectedWork?.gallery) return;
-    const total = selectedWork.gallery.length;
-    if (deltaX > GALLERY_SWIPE_THRESHOLD) {
-      setGallerySlideIndex((i) => (i - 1 + total) % total);
-    } else if (deltaX < -GALLERY_SWIPE_THRESHOLD) {
-      setGallerySlideIndex((i) => (i + 1) % total);
-    }
-  };
+  // --- Gallery lightbox swipe/drag — pakai pointer events, sama konsep dengan work modal ---
+  // Satu ref menyimpan semua state drag, tidak ada async gap, tidak bisa "drag forever".
+  const galleryPointerRef = useRef<{ startX: number; currentX: number; fromBackdrop: boolean } | null>(null);
+  const galleryDownOnBackdrop = useRef(false);
 
   const galleryMouseCancel = () => {
-    galleryMouseIsDown.current = false;
-    galleryMouseDragStartX.current = null;
+    galleryPointerRef.current = null;
     setGalleryIsDraggingSwiping(false);
     setGalleryMouseDragOffset(0);
   };
@@ -1485,6 +1504,20 @@ export default function App() {
         }
         .animate-work-slide-in-left {
           animation: workSlideInLeft 0.3s ease-out;
+        }
+        @keyframes gallerySlideInRight {
+          from { transform: translateX(60px); opacity: 0.3; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes gallerySlideInLeft {
+          from { transform: translateX(-60px); opacity: 0.3; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        .animate-gallery-slide-in-right {
+          animation: gallerySlideInRight 0.3s ease-out;
+        }
+        .animate-gallery-slide-in-left {
+          animation: gallerySlideInLeft 0.3s ease-out;
         }
       `}</style>
 
@@ -3532,7 +3565,14 @@ export default function App() {
           <div
             className="fixed inset-0 bg-zinc-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6 animate-fade-in"
             onMouseMove={resetWorkNavTimer}
-            onTouchStart={resetWorkNavTimer}
+            onMouseDown={(e) => workModalPointerDown(e.clientX, e.target === e.currentTarget)}
+            onTouchStart={(e) => {
+              resetWorkNavTimer();
+              workModalPointerDown(e.touches[0].clientX, e.target === e.currentTarget);
+            }}
+            onTouchMove={(e) => workModalPointerMove(e.touches[0].clientX)}
+            onTouchEnd={workModalPointerUp}
+            onTouchCancel={workModalPointerCancel}
           >
 
             {/* Navigator Proyek/Riset Sebelumnya & Berikutnya — mengambang DI LUAR kartu modal,
@@ -3606,14 +3646,6 @@ export default function App() {
                 touchAction: 'pan-y',
                 cursor: workModalIsDragging ? 'grabbing' : 'grab',
               }}
-              onTouchStart={(e) => workModalPointerDown(e.touches[0].clientX)}
-              onTouchMove={(e) => workModalPointerMove(e.touches[0].clientX)}
-              onTouchEnd={workModalPointerUp}
-              onTouchCancel={workModalPointerCancel}
-              onMouseDown={(e) => workModalPointerDown(e.clientX)}
-              onMouseMove={(e) => { if (workModalIsPointerDown.current) workModalPointerMove(e.clientX); }}
-              onMouseUp={workModalPointerUp}
-              onMouseLeave={() => { if (workModalIsPointerDown.current) workModalPointerCancel(); }}
             >
 
             {/* Tombol Tutup Modal — terkunci di pojok kanan atas modal, tidak ikut scroll */}
@@ -3752,22 +3784,62 @@ export default function App() {
               resetGalleryNavTimer();
               if (galleryZoom > GALLERY_MIN_ZOOM) return;
               galleryTouchStartX.current = e.touches[0].clientX;
+              galleryDownOnBackdrop.current = e.target === e.currentTarget;
             }}
             onTouchEnd={(e) => {
               if (galleryZoom > GALLERY_MIN_ZOOM || galleryTouchStartX.current === null) return;
               const deltaX = e.changedTouches[0].clientX - galleryTouchStartX.current;
-              const total = selectedWork.gallery.length;
-              if (deltaX > GALLERY_SWIPE_THRESHOLD) {
-                setGallerySlideIndex((i) => (i - 1 + total) % total);
-              } else if (deltaX < -GALLERY_SWIPE_THRESHOLD) {
-                setGallerySlideIndex((i) => (i + 1) % total);
-              }
+              const fromBackdrop = galleryDownOnBackdrop.current;
               galleryTouchStartX.current = null;
+              if (Math.abs(deltaX) < TAP_SLOP) {
+                if (fromBackdrop) setSelectedGalleryImage(null);
+                return;
+              }
+              if (deltaX > GALLERY_SWIPE_THRESHOLD) {
+                goToGallerySlide(-1);
+              } else if (deltaX < -GALLERY_SWIPE_THRESHOLD) {
+                goToGallerySlide(1);
+              }
             }}
-            onMouseDown={(e) => galleryMouseDown(e.clientX)}
-            onMouseMove={(e) => { resetGalleryNavTimer(); galleryMouseMove(e.clientX); }}
-            onMouseUp={galleryMouseUp}
-            onMouseLeave={galleryMouseCancel}
+            onTouchCancel={() => { galleryTouchStartX.current = null; galleryMouseCancel(); }}
+            onMouseMove={resetGalleryNavTimer}
+            onPointerDown={(e) => {
+              if (galleryZoom > GALLERY_MIN_ZOOM) return;
+              // Jangan capture click pada tombol/interactable child
+              if ((e.target as HTMLElement).closest('button,a')) return;
+              e.preventDefault();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              galleryPointerRef.current = {
+                startX: e.clientX,
+                currentX: e.clientX,
+                fromBackdrop: e.target === e.currentTarget,
+              };
+              setGalleryIsDraggingSwiping(true);
+              setGalleryMouseDragOffset(0);
+              resetGalleryNavTimer();
+            }}
+            onPointerMove={(e) => {
+              if (!galleryPointerRef.current || galleryZoom > GALLERY_MIN_ZOOM) return;
+              galleryPointerRef.current.currentX = e.clientX;
+              setGalleryMouseDragOffset(e.clientX - galleryPointerRef.current.startX);
+              resetGalleryNavTimer();
+            }}
+            onPointerUp={(e) => {
+              if (!galleryPointerRef.current) return;
+              const { startX, currentX, fromBackdrop } = galleryPointerRef.current;
+              const deltaX = currentX - startX;
+              galleryPointerRef.current = null;
+              setGalleryIsDraggingSwiping(false);
+              setGalleryMouseDragOffset(0);
+              resetGalleryNavTimer();
+              if (Math.abs(deltaX) < TAP_SLOP) {
+                if (fromBackdrop) setSelectedGalleryImage(null);
+                return;
+              }
+              if (deltaX > GALLERY_SWIPE_THRESHOLD) goToGallerySlide(-1);
+              else if (deltaX < -GALLERY_SWIPE_THRESHOLD) goToGallerySlide(1);
+            }}
+            onPointerCancel={galleryMouseCancel}
           >
             {/* Close button */}
             <button
@@ -3787,7 +3859,7 @@ export default function App() {
               <>
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); resetGalleryNavTimer(); setGallerySlideIndex((i) => (i - 1 + selectedWork.gallery.length) % selectedWork.gallery.length); }}
+                  onClick={(e) => { e.stopPropagation(); resetGalleryNavTimer(); goToGallerySlide(-1); }}
                   aria-label="Previous image"
                   className="absolute left-3 md:left-6 top-1/2 -translate-y-1/2 z-50 bg-white/90 hover:bg-white text-zinc-900 p-3 rounded-full shadow-lg transition-colors pointer-events-auto"
                   style={{ transition: 'opacity 0.4s ease', opacity: galleryNavVisible ? 1 : 0.15 }}
@@ -3798,7 +3870,7 @@ export default function App() {
                 </button>
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); resetGalleryNavTimer(); setGallerySlideIndex((i) => (i + 1) % selectedWork.gallery.length); }}
+                  onClick={(e) => { e.stopPropagation(); resetGalleryNavTimer(); goToGallerySlide(1); }}
                   aria-label="Next image"
                   className="absolute right-3 md:right-6 top-1/2 -translate-y-1/2 z-50 bg-white/90 hover:bg-white text-zinc-900 p-3 rounded-full shadow-lg transition-colors pointer-events-auto"
                   style={{ transition: 'opacity 0.4s ease', opacity: galleryNavVisible ? 1 : 0.15 }}
@@ -3811,12 +3883,12 @@ export default function App() {
             )}
 
             <div
-              className={`max-w-[90vw] max-h-[80vh] overflow-hidden rounded-3xl border border-white/10 shadow-2xl bg-black select-none ${galleryZoom > GALLERY_MIN_ZOOM ? (isGalleryPanning ? 'cursor-grabbing' : 'cursor-grab') : (galleryIsDraggingSwiping ? 'cursor-grabbing' : 'cursor-grab')}`}
-              style={{ transform: galleryZoom <= GALLERY_MIN_ZOOM ? `translateX(${galleryMouseDragOffset}px)` : undefined, transition: galleryIsDraggingSwiping ? 'none' : 'transform 0.3s ease-out' }}
+              className={`max-w-[90vw] max-h-[80vh] overflow-hidden rounded-3xl border border-white/10 shadow-2xl bg-black select-none ${galleryZoom > GALLERY_MIN_ZOOM ? (isGalleryPanning ? 'cursor-grabbing' : 'cursor-grab') : (galleryIsDraggingSwiping ? 'cursor-grabbing' : 'cursor-grab')} ${galleryTransitionDirection === 1 ? 'animate-gallery-slide-in-right' : galleryTransitionDirection === -1 ? 'animate-gallery-slide-in-left' : ''}`}
+              style={{ transform: galleryZoom <= GALLERY_MIN_ZOOM ? `translateX(${galleryMouseDragOffset}px)` : undefined, transition: galleryIsDraggingSwiping ? 'none' : galleryTransitionDirection !== 0 ? 'none' : 'transform 0.3s ease-out' }}
               onWheel={handleGalleryWheel}
-              onMouseDown={(e) => { e.stopPropagation(); if (galleryZoom > GALLERY_MIN_ZOOM) handleGalleryPanStart(e.clientX, e.clientY); }}
+              onMouseDown={(e) => { if (galleryZoom > GALLERY_MIN_ZOOM) { e.stopPropagation(); handleGalleryPanStart(e.clientX, e.clientY); } }}
               onMouseMove={(e) => { if (galleryPanDragRef.current) { e.stopPropagation(); handleGalleryPanMove(e.clientX, e.clientY); } }}
-              onMouseUp={handleGalleryPanEnd}
+              onMouseUp={(e) => { e.stopPropagation(); handleGalleryPanEnd(); }}
               onMouseLeave={handleGalleryPanEnd}
             >
               <img
@@ -3886,7 +3958,13 @@ export default function App() {
                   <button
                     key={idx}
                     type="button"
-                    onClick={(e) => { e.stopPropagation(); setGallerySlideIndex(idx); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (idx === gallerySlideIndex) return;
+                      resetGalleryNavTimer();
+                      setGalleryTransitionDirection(idx > gallerySlideIndex ? 1 : -1);
+                      setGallerySlideIndex(idx);
+                    }}
                     aria-label={`Go to image ${idx + 1}`}
                     className={`rounded-full transition-all duration-200 ${idx === gallerySlideIndex ? 'w-5 h-2 bg-white' : 'w-2 h-2 bg-white/40 hover:bg-white/70'}`}
                   />
